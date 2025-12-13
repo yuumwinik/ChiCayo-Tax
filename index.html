@@ -1,0 +1,117 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ChiCayo Tax</title>
+    <meta name="description" content="ChiCayo is an appointment tracker for call-center agents to track earnings, manage live transfers, and streamline the client journey." />
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:title" content="ChiCayo Tax Portal" />
+    <meta property="og:description" content="ChiCayo is an appointment tracker for call-center agents." />
+    <meta property="og:image" content="https://firebasestorage.googleapis.com/v0/b/revitalize-ai-1amnb.firebasestorage.app/o/Logo.png?alt=media&token=504f53e4-357a-493b-9914-fd5224c629b8" />
+    <meta property="og:type" content="website" />
+
+    <!-- PWA Theme Color (Default Light: slate-50) -->
+    <meta name="theme-color" content="#f8fafc" />
+    
+    <!-- iOS Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ChiCayo Tax" />
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/png" href="https://firebasestorage.googleapis.com/v0/b/revitalize-ai-1amnb.firebasestorage.app/o/Logo.png?alt=media&token=504f53e4-357a-493b-9914-fd5224c629b8" />
+    <link rel="apple-touch-icon" href="https://firebasestorage.googleapis.com/v0/b/revitalize-ai-1amnb.firebasestorage.app/o/Logo.png?alt=media&token=504f53e4-357a-493b-9914-fd5224c629b8" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              slate: {
+                850: '#151f32', // Custom dark depth
+                950: '#020617', // Even darker for background
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        -webkit-tap-highlight-color: transparent;
+        font-family: 'Inter', sans-serif;
+      }
+      /* Hide scrollbar for clean horizontal scrolling */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      /* Custom Apple-style Scrollbar */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: rgba(148, 163, 184, 0.4); /* slate-400 low opacity */
+        border-radius: 9999px;
+        border: 2px solid transparent; /* padding effect */
+        background-clip: content-box;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(148, 163, 184, 0.7);
+      }
+      /* Dark mode scrollbar */
+      .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: rgba(71, 85, 105, 0.5); /* slate-600 low opacity */
+      }
+      .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(71, 85, 105, 0.8);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@18.3.1/",
+    "react/": "https://aistudiocdn.com/react@18.3.1/",
+    "react": "https://aistudiocdn.com/react@18.3.1",
+    "react-dom": "https://aistudiocdn.com/react-dom@18.3.1",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@18.3.1",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.39.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 min-h-[100dvh] overflow-hidden">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="./index.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('SW registered'))
+            .catch(err => console.log('SW registration failed', err));
+        });
+      }
+    </script>
+  </body>
+</html>
