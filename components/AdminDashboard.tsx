@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { formatCurrency, formatDate } from '../utils/dateUtils';
 import { 
   IconUsers, 
@@ -13,13 +12,26 @@ import {
   IconDownload,
   IconClipboardList,
   IconTimer,
-  IconSparkles
+  IconSparkles,
+  IconTrophy,
+  IconMedal,
+  IconPlus,
+  IconBot,
+  IconX,
+  IconSend,
+  IconBriefcase,
+  IconTrendingUp,
+  IconTransfer,
+  IconActivity,
+  IconBonusMachine,
+  IconChevronDown
 } from './Icons';
 
-import { TeamMember, AdminView, PayCycle, DashboardStats, ActivityLog } from '../types';
+import { TeamMember, AdminView, PayCycle, DashboardStats, ActivityLog, Appointment, AppointmentStage, User, IncentiveRule, Incentive } from '../types';
 import { AdminAnalytics } from './Admin/AdminAnalytics';
 import { AdminCycles } from './Admin/AdminCycles';
 import { CustomSelect } from './CustomSelect';
+import { IncentiveBuilder } from './Admin/IncentiveBuilder';
 
 interface AdminDashboardProps {
   members: TeamMember[];
@@ -30,336 +42,410 @@ interface AdminDashboardProps {
   onDeleteUser?: (id: string) => void;
   stats?: DashboardStats;
   commissionRate?: number;
-  onUpdateCommission?: (rate: number) => void;
+  selfCommissionRate?: number;
+  onUpdateMasterCommissions: (std: number, self: number) => void;
   activeCycle?: PayCycle;
   activityLogs?: ActivityLog[];
   onLogOnboard?: () => void;
+  appointments?: Appointment[];
+  onApplyIncentive?: (rule: Partial<IncentiveRule>) => void;
+  allUsers?: User[];
+  lifetimeTeamEarnings?: number;
+  incentiveRules?: IncentiveRule[];
+  onDeleteIncentiveRule?: (id: string) => void;
+  allIncentives?: Incentive[];
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
-  members,
-  payCycles,
-  onAddCycle,
-  onEditCycle,
-  onDeleteCycle,
-  onDeleteUser,
-  stats,
-  commissionRate = 200,
-  onUpdateCommission,
-  activeCycle,
-  activityLogs = [],
-  onLogOnboard
+  members, payCycles, onAddCycle, onEditCycle, onDeleteCycle, onDeleteUser, stats,
+  commissionRate = 200, selfCommissionRate = 300, onUpdateMasterCommissions,
+  activeCycle, activityLogs = [], onLogOnboard, appointments = [],
+  onApplyIncentive, allUsers = [], lifetimeTeamEarnings = 0, incentiveRules = [], 
+  onDeleteIncentiveRule, 
+  allIncentives = []
 }) => {
 
   const [activeTab, setActiveTab] = useState<AdminView>('overview');
-  const [adminAlert, setAdminAlert] = useState<{ isOpen: boolean, memberName: string, milestone: number, message: string } | null>(null);
+  const [selectedScopeId, setSelectedScopeId] = useState<string>('active');
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('all');
+  const [expandedCycles, setExpandedCycles] = useState<Set<string>>(new Set());
 
-  const totalEarnings = members.reduce((acc, curr) => acc + curr.totalEarnings, 0);
-  const totalOnboarded = members.reduce((acc, curr) => acc + curr.onboardedCount, 0);
-  const activeAgents = members.filter(m => m.status !== 'Online').length;
+  const toggleCycle = (id: string) => {
+      const next = new Set(expandedCycles);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      setExpandedCycles(next);
+  };
 
-  // Cycle Urgency Logic
-  let cycleUrgency = null;
-  if (activeCycle) {
-     const end = new Date(activeCycle.endDate);
-     const diffTime = Math.abs(end.getTime() - new Date().getTime());
-     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-     if (diffDays <= 3) {
-        cycleUrgency = diffDays;
-     }
-  }
+  const scopeOptions = useMemo(() => {
+    const options = [
+      { value: 'active', label: 'Current Active Cycle' },
+      { value: 'lifetime', label: 'All-Time Lifetime' }
+    ];
+    const ended = payCycles
+        .filter(c => new Date(c.endDate).getTime() < Date.now())
+        .sort((a,b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime())
+        .slice(0, 5)
+        .map(c => ({
+            value: c.id,
+            label: `${formatDate(c.startDate)} - ${formatDate(c.endDate)}`
+        }));
+    return [...options, ...ended];
+  }, [payCycles]);
 
-  // --- ADMIN ALERT MONITORING ---
-  useEffect(() => {
-    if (!activeCycle) return;
-
-    // Check each member for milestone in CURRENT active cycle
-    members.forEach(member => {
-        // Milestone 13
-        if (member.onboardedCount >= 13) {
-            const key13 = `admin_seen_milestone_13_${member.id}_${activeCycle.id}`;
-            const seen13 = localStorage.getItem(key13);
-            if (!seen13) {
-                setAdminAlert({
-                    isOpen: true,
-                    memberName: member.name,
-                    milestone: 13,
-                    message: `${member.name} has hit 13 Onboards this cycle! They're on fire!`
-                });
-                localStorage.setItem(key13, 'true');
-                return; // Show one at a time
-            }
+  const dashboardData = useMemo(() => {
+    let filteredAppts = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
+    let scopeLabel = "Active Cycle";
+    
+    if (selectedScopeId === 'active') {
+        if (activeCycle) {
+            const s = new Date(activeCycle.startDate).getTime();
+            const e = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
+            filteredAppts = filteredAppts.filter(a => {
+                const d = new Date(a.scheduledAt).getTime();
+                return d >= s && d <= e;
+            });
+        } else {
+            filteredAppts = [];
         }
+    } else if (selectedScopeId !== 'lifetime') {
+        const cycle = payCycles.find(c => c.id === selectedScopeId);
+        if (cycle) {
+            const s = new Date(cycle.startDate).getTime();
+            const e = new Date(cycle.endDate).setHours(23, 59, 59, 999);
+            filteredAppts = filteredAppts.filter(a => {
+                const d = new Date(a.scheduledAt).getTime();
+                return d >= s && d <= e;
+            });
+            scopeLabel = `${formatDate(cycle.startDate)} - ${formatDate(cycle.endDate)}`;
+        }
+    }
 
-        // Milestone 21
-        if (member.onboardedCount >= 21) {
-            const key21 = `admin_seen_milestone_21_${member.id}_${activeCycle.id}`;
-            const seen21 = localStorage.getItem(key21);
-            if (!seen21) {
-                setAdminAlert({
-                    isOpen: true,
-                    memberName: member.name,
-                    milestone: 21,
-                    message: `CYCLE MASTER ALERT! ${member.name} has hit 21 Onboards! Absolutely crushing it.`
-                });
-                localStorage.setItem(key21, 'true');
-            }
+    if (selectedAgentId !== 'all') {
+        filteredAppts = filteredAppts.filter(a => a.userId === selectedAgentId);
+    }
+
+    const liveFunnel = appointments.filter(a => a.stage === AppointmentStage.PENDING || a.stage === AppointmentStage.RESCHEDULED).length;
+    const projectedWins = Math.round(liveFunnel * 0.2);
+    const projectedRevenue = projectedWins * commissionRate;
+
+    const aeCloseMap: Record<string, number> = { 'Joshua': 0, 'Jorge': 0, 'Andrew': 0 };
+    let agentSelfCloseCount = 0;
+
+    filteredAppts.forEach(a => {
+        const agent = allUsers.find(u => u.id === a.userId);
+        if (a.aeName && aeCloseMap.hasOwnProperty(a.aeName)) {
+            aeCloseMap[a.aeName]++;
+        } else if (agent && a.aeName === agent.name) {
+            agentSelfCloseCount++;
         }
     });
-  }, [members, activeCycle]);
 
-  const safeStats: DashboardStats = stats || {
-    totalAppointments: 0,
-    totalOnboarded: 0,
-    totalPending: 0,
-    totalFailed: 0,
-    totalRescheduled: 0,
-    conversionRate: '0.0',
-    totalTransfers: 0,
-    transfersOnboarded: 0,
-    transfersDeclined: 0,
-    transferConversionRate: '0.0',
-    appointmentsTransferred: 0,
-    apptTransferConversionRate: '0.0',
-    aePerformance: {}
-  };
+    const agentMatrix = allUsers.filter(u => u.role !== 'admin').map(agent => {
+        const userAppts = filteredAppts.filter(a => a.userId === agent.id);
+        const self = userAppts.filter(a => a.aeName === agent.name).length;
+        const passed = userAppts.length - self;
+        return { id: agent.id, name: agent.name, avatarId: agent.avatarId, self, passed, total: userAppts.length };
+    }).sort((a,b) => b.total - a.total);
 
-  const downloadReport = () => {
-     const headers = ['Agent Name', 'Status', 'Onboarded', 'Earnings', 'Last Active'];
-     const rows = members.map(m => [m.name, m.status, m.onboardedCount, (m.totalEarnings/100).toFixed(2), m.lastActive]);
-     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-     const encodedUri = encodeURI(csvContent);
-     const link = document.createElement("a");
-     link.setAttribute("href", encodedUri);
-     link.setAttribute("download", `chi_cayo_report_${new Date().toISOString().split('T')[0]}.csv`);
-     document.body.appendChild(link);
-     link.click();
-     document.body.removeChild(link);
-  };
+    let selfOnboardRevenue = 0; let transferredRevenue = 0;
+    filteredAppts.forEach(a => {
+        const agent = allUsers.find(u => u.id === a.userId);
+        const isSelf = a.aeName === agent?.name;
+        const rate = a.earnedAmount || (isSelf ? selfCommissionRate : commissionRate);
+        if (isSelf) selfOnboardRevenue += rate; else transferredRevenue += rate;
+    });
+
+    const relevantIncentives = allIncentives.filter(i => {
+       if (selectedAgentId !== 'all' && i.userId !== selectedAgentId) return false;
+       if (selectedScopeId === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
+       if (selectedScopeId !== 'active' && selectedScopeId !== 'lifetime' && i.appliedCycleId !== selectedScopeId) return false;
+       return true;
+    });
+    const bonusRevenue = relevantIncentives.reduce((sum, i) => sum + i.amountCents, 0);
+
+    const synergy: Record<string, Record<string, { count: number, revenue: number }>> = {};
+    filteredAppts.forEach(a => {
+        const agent = allUsers.find(u => u.id === a.userId);
+        if (agent && agent.role !== 'admin' && a.aeName && a.aeName !== agent.name) {
+            if (!synergy[agent.name]) synergy[agent.name] = {};
+            if (!synergy[agent.name][a.aeName]) synergy[agent.name][a.aeName] = { count: 0, revenue: 0 };
+            
+            const rate = Number(a.earnedAmount) || commissionRate;
+            synergy[agent.name][a.aeName].count++;
+            synergy[agent.name][a.aeName].revenue += rate;
+        }
+    });
+
+    const history = payCycles
+        .filter(c => new Date(c.endDate).getTime() < Date.now())
+        .sort((a,b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime())
+        .map(cycle => {
+            const s = new Date(cycle.startDate).getTime();
+            const e = new Date(cycle.endDate).setHours(23, 59, 59, 999);
+            const cycleAppts = appointments.filter(a => {
+                if (selectedAgentId !== 'all' && a.userId !== selectedAgentId) return false;
+                const d = new Date(a.scheduledAt).getTime();
+                return a.stage === AppointmentStage.ONBOARDED && d >= s && d <= e;
+            });
+            const cycleIncentives = allIncentives.filter(i => {
+                if (selectedAgentId !== 'all' && i.userId !== selectedAgentId) return false;
+                return i.appliedCycleId === cycle.id;
+            });
+            const prodRev = cycleAppts.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
+            const bonusRev = cycleIncentives.reduce((sum, i) => sum + Number(i.amountCents), 0);
+            return {
+                ...cycle,
+                onboardedCount: cycleAppts.length,
+                totalCents: prodRev + bonusRev,
+                incentives: cycleIncentives,
+                appointments: cycleAppts
+            };
+        });
+
+    return { 
+        appointments: filteredAppts, 
+        totalProductionRevenue: selfOnboardRevenue + transferredRevenue,
+        totalBonusRevenue: bonusRevenue,
+        totalOnboarded: filteredAppts.length,
+        aePerformance: aeCloseMap,
+        agentSelfCloseCount,
+        agentMatrix,
+        scopeLabel,
+        synergy,
+        history,
+        projectedRevenue,
+        projectedWins
+    };
+  }, [appointments, selectedScopeId, selectedAgentId, activeCycle, payCycles, allUsers, commissionRate, selfCommissionRate, allIncentives]);
+
+  const renderOverview = () => (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 pb-20">
+        <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white dark:bg-slate-800 p-4 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm">
+            <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200 dark:shadow-none"><IconCycle className="w-5 h-5" /></div>
+                <div><h4 className="text-sm font-bold text-slate-900 dark:text-white">Viewing: {dashboardData.scopeLabel}</h4><p className="text-[10px] text-slate-500 font-medium">Global workforce aggregation.</p></div>
+            </div>
+            <div className="flex gap-3 w-full md:w-auto">
+                <div className="w-48"><CustomSelect options={scopeOptions} value={selectedScopeId} onChange={setSelectedScopeId} /></div>
+                <div className="w-48"><CustomSelect options={[{value: 'all', label: 'All Agents'}, ...allUsers.filter(u => u.role !== 'admin').map(u => ({value: u.id, label: u.name}))]} value={selectedAgentId} onChange={setSelectedAgentId} /></div>
+            </div>
+        </div>
+
+        <div className="bg-slate-900 rounded-[2.5rem] p-6 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border-b-4 border-indigo-500">
+           <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center animate-pulse"><IconBot className="w-6 h-6 text-indigo-400" /></div>
+              <div>
+                 <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">Taxter Predictive Lens</h3>
+                 <p className="text-lg font-bold">Cycle Forecast: <span className="text-indigo-300">+{dashboardData.projectedWins} Projected Onboards</span></p>
+              </div>
+           </div>
+           <div className="flex items-center gap-6">
+              <div className="text-right">
+                 <div className="text-[10px] font-black text-slate-400 uppercase mb-0.5">Potential Pipeline Rev</div>
+                 <div className="text-2xl font-black text-indigo-400">+{formatCurrency(dashboardData.projectedRevenue)}</div>
+              </div>
+              <div className="h-10 w-[1px] bg-white/10 hidden md:block"></div>
+              <div className="bg-white/10 px-4 py-2 rounded-xl border border-white/10 flex items-center gap-2">
+                 <IconTrendingUp className="w-4 h-4 text-emerald-400" />
+                 <span className="text-xs font-black uppercase tracking-widest text-emerald-400">20% Conversion Model</span>
+              </div>
+           </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {['Joshua', 'Jorge', 'Andrew', 'Agent-Self'].map(name => {
+                const isSelf = name === 'Agent-Self';
+                const count = isSelf ? dashboardData.agentSelfCloseCount : (dashboardData.aePerformance[name] || 0);
+                const total = dashboardData.totalOnboarded || 1;
+                const percent = Math.round((count / total) * 100);
+                const color = isSelf ? 'bg-emerald-500' : (name === 'Joshua' ? 'bg-blue-500' : name === 'Jorge' ? 'bg-orange-500' : 'bg-purple-500');
+                const Icon = isSelf ? IconSparkles : IconBriefcase;
+                return (
+                    <div key={name} className="bg-white dark:bg-slate-800 p-5 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm relative overflow-hidden group hover:border-indigo-200 transition-all">
+                        <div className="flex justify-between items-center mb-4 relative z-10">
+                            <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-xl ${color} text-white flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 group-hover:rotate-6`}><Icon className="w-5 h-5" /></div><span className="font-black text-slate-900 dark:text-white uppercase tracking-tighter text-[11px]">{isSelf ? 'Agents-Self' : name}</span></div>
+                            <div className="text-right"><div className="text-2xl font-black text-slate-900 dark:text-white">{count}</div><div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Scoped</div></div>
+                        </div>
+                        <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden"><div className={`h-full ${color} transition-all duration-1000 ease-out`} style={{ width: `${percent}%` }} /></div>
+                        <div className="mt-2 flex justify-between"><span className="text-[9px] font-bold text-slate-400 uppercase">Share of Total</span><span className="text-[9px] font-black text-slate-600 dark:text-slate-300">{percent}%</span></div>
+                    </div>
+                );
+            })}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full">
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-4 group hover:shadow-md transition-all">
+                    <div className="p-4 bg-emerald-100 text-emerald-600 rounded-2xl shrink-0 group-hover:scale-110 transition-transform"><IconDollarSign className="w-7 h-7" /></div>
+                    <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Production Rev</p><h3 className="text-2xl font-black text-slate-900 dark:text-white">{formatCurrency(dashboardData.totalProductionRevenue)}</h3></div>
+                </div>
+                {dashboardData.totalBonusRevenue > 0 ? (
+                  <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-6 rounded-[2rem] shadow-lg flex items-center gap-4 text-white animate-in zoom-in duration-500">
+                      <div className="p-4 bg-white/20 rounded-2xl shrink-0"><IconTrophy className="w-7 h-7" /></div>
+                      <div><p className="text-xs font-black uppercase tracking-widest opacity-80">Bonus Payout</p><h3 className="text-2xl font-black">{formatCurrency(dashboardData.totalBonusRevenue)}</h3></div>
+                  </div>
+                ) : (
+                    <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-4 group hover:shadow-md transition-all">
+                        <div className="p-4 bg-indigo-100 text-indigo-600 rounded-2xl shrink-0 group-hover:rotate-12 transition-transform"><IconChartBar className="w-7 h-7" /></div>
+                        <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Confirmed Leads</p><h3 className="text-2xl font-black text-slate-900 dark:text-white">{dashboardData.totalOnboarded}</h3></div>
+                    </div>
+                )}
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-4 group">
+                    <div className="p-4 bg-blue-100 text-blue-600 rounded-2xl shrink-0 group-hover:scale-110 transition-transform"><IconUsers className="w-7 h-7" /></div>
+                    <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Workforce Size</p><h3 className="text-2xl font-black text-slate-900 dark:text-white">{allUsers.filter(u => u.role !== 'admin').length} <span className="text-xs font-bold text-slate-400">Agents</span></h3></div>
+                </div>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-4 group">
+                    <div className="p-4 bg-amber-100 text-amber-600 rounded-2xl shrink-0 group-hover:animate-pulse"><IconTrendingUp className="w-7 h-7" /></div>
+                    <div><p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Funnel Velocity</p><h3 className="text-2xl font-black text-slate-900 dark:text-white">{appointments.filter(a => a.stage === AppointmentStage.PENDING || a.stage === AppointmentStage.RESCHEDULED).length} <span className="text-xs font-bold text-slate-400">Live</span></h3></div>
+                </div>
+            </div>
+            <IncentiveBuilder onApply={onApplyIncentive!} members={members} activeCycle={activeCycle} rules={incentiveRules} onDeleteRule={onDeleteIncentiveRule!} />
+        </div>
+
+        <div className="bg-white dark:bg-slate-800 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+            <div className="px-8 py-5 border-b border-slate-50 dark:border-slate-700 flex justify-between items-center"><h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2"><IconActivity className="w-5 h-5 text-indigo-500" /> Agent Performance Dynamics</h3><div className="flex gap-4"><div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Self-Onboard</span></div><div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-indigo-500 rounded-full"></div><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">AE Assisted</span></div></div></div>
+            <div className="p-8"><div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">{dashboardData.agentMatrix.map(data => { const selfPercent = data.total > 0 ? Math.round((data.self / data.total) * 100) : 0; const passedPercent = data.total > 0 ? Math.round((data.passed / data.total) * 100) : 0; return (<div key={data.id} className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 group hover:border-indigo-200 transition-all"><div className="flex items-center gap-3 mb-6"><div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 overflow-hidden flex items-center justify-center shrink-0">{data.avatarId && data.avatarId !== 'initial' ? getAvatarIcon(data.avatarId) : <span className="font-bold text-indigo-500">{data.name.charAt(0)}</span>}</div><div className="flex-1 min-w-0"><div className="text-sm font-black text-slate-900 dark:text-white truncate">{data.name}</div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{data.total} Scoped Wins</div></div></div><div className="space-y-4"><div className="space-y-1"><div className="flex justify-between text-[10px] font-black uppercase tracking-tighter"><span className="text-emerald-600">Self-Onboard</span><span className="text-slate-500">{data.self} ({selfPercent}%)</span></div><div className="h-2 w-full bg-white dark:bg-slate-800 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${selfPercent}%` }}></div></div></div><div className="space-y-1"><div className="flex justify-between text-[10px] font-black uppercase tracking-tighter"><span className="text-indigo-600">AE Assisted</span><span className="text-slate-500">{data.passed} ({passedPercent}%)</span></div><div className="h-2 w-full bg-white dark:bg-slate-800 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${passedPercent}%` }}></div></div></div></div></div>); })}</div></div>
+        </div>
+
+        <div className="space-y-4">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-3 px-2">
+                <IconCycle className="w-6 h-6 text-indigo-500" /> Team Payout History
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {dashboardData.history.map(win => {
+                    const isOpen = expandedCycles.has(win.id);
+                    return (
+                        <div key={win.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-[2.5rem] overflow-hidden shadow-sm transition-all hover:shadow-md h-fit">
+                            <button onClick={() => toggleCycle(win.id)} className="w-full p-6 flex items-center justify-between text-left transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-700/20">
+                                <div className="flex items-center gap-5">
+                                    <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded-2xl flex flex-col items-center justify-center font-black">
+                                        <span className="text-xl leading-none">{win.onboardedCount}</span>
+                                        <span className="text-[8px] uppercase tracking-tighter">Wins</span>
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-black text-slate-900 dark:text-white mb-0.5">{formatDate(win.startDate)} — {formatDate(win.endDate)}</div>
+                                        <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Team Total: {formatCurrency(win.totalCents)}</div>
+                                    </div>
+                                </div>
+                                <div className={`p-2 rounded-full bg-slate-50 dark:bg-slate-900 text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
+                                    <IconChevronDown className="w-5 h-5" />
+                                </div>
+                            </button>
+
+                            {isOpen && (
+                                <div className="px-6 pb-6 animate-in slide-in-from-top-4 duration-300">
+                                    <div className="space-y-4 border-t border-slate-100 dark:border-slate-700 pt-6">
+                                        {win.incentives.length > 0 && (
+                                            <div className="space-y-2">
+                                                <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Cycle Challenges</h5>
+                                                {win.incentives.map(i => (
+                                                    <div key={i.id} className="flex justify-between items-center bg-amber-50/50 dark:bg-amber-900/10 p-3 rounded-xl border border-amber-100 dark:border-amber-900/30">
+                                                        <div className="flex items-center gap-2">
+                                                            <IconTrophy className="w-3.5 h-3.5 text-amber-600" />
+                                                            <span className="text-xs font-bold text-amber-900 dark:text-amber-400">{i.label}</span>
+                                                        </div>
+                                                        <span className="text-xs font-black text-amber-600">+{formatCurrency(i.amountCents)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <div className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-800">
+                                            <table className="w-full text-left text-[10px]">
+                                                <thead className="bg-slate-100 dark:bg-slate-800">
+                                                    <tr>
+                                                        <th className="px-4 py-2 font-black uppercase text-slate-400">Agent</th>
+                                                        <th className="px-4 py-2 text-right font-black uppercase text-slate-400">Earned</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                    {win.appointments.map(a => (
+                                                        <tr key={a.id}>
+                                                            <td className="px-4 py-2 font-bold text-slate-600 dark:text-slate-300">{allUsers?.find(u => u.id === a.userId)?.name || 'Agent'}</td>
+                                                            <td className="px-4 py-2 text-right font-black text-emerald-600">{formatCurrency(a.earnedAmount || 0)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-800 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+             <div className="px-8 py-5 border-b border-slate-50 dark:border-slate-700"><h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2"><IconTransfer className="w-5 h-5 text-indigo-500" /> Executive Synergy Matrix</h3></div>
+             <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {Object.entries(dashboardData.synergy).map(([agentName, aeData]) => {
+                   const totalAgentSynergyRev = Object.values(aeData).reduce((s, c) => s + c.revenue, 0);
+                   return (
+                      <div key={agentName} className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 flex flex-col h-full">
+                         <div className="text-sm font-black text-slate-900 dark:text-white mb-4 border-b border-slate-200 dark:border-slate-700 pb-2 flex justify-between items-center">
+                            {agentName}
+                            <span className="text-[10px] bg-white dark:bg-slate-800 px-2 py-1 rounded-lg text-slate-400">Source Agent</span>
+                         </div>
+                         <div className="space-y-4 flex-1">
+                            {Object.entries(aeData).sort((a,b) => b[1].revenue - a[1].revenue).map(([ae, data]) => {
+                               const aeColor = ae === 'Joshua' ? 'bg-blue-500' : ae === 'Jorge' ? 'bg-orange-500' : 'bg-purple-500';
+                               return (
+                                  <div key={ae} className="flex flex-col gap-1.5">
+                                     <div className="flex justify-between items-end">
+                                        <div className="flex flex-col">
+                                           <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Closed by {ae}</span>
+                                           <span className="text-[10px] text-slate-400 font-medium">{data.count} Transfers</span>
+                                        </div>
+                                        <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 tabular-nums">{formatCurrency(data.revenue)}</span>
+                                     </div>
+                                     <div className="h-1.5 w-full bg-white dark:bg-slate-800 rounded-full overflow-hidden">
+                                        <div className={`h-full ${aeColor}`} style={{ width: `${(data.revenue / (totalAgentSynergyRev || 1)) * 100}%` }} />
+                                     </div>
+                                  </div>
+                               );
+                            })}
+                         </div>
+                      </div>
+                   );
+                })}
+                {Object.keys(dashboardData.synergy).length === 0 && (
+                   <div className="col-span-full py-8 text-center text-slate-400 italic">No synergy data recorded for this scope.</div>
+                )}
+             </div>
+        </div>
+    </div>
+  );
 
   const renderContent = () => {
     switch (activeTab) {
-      case "analytics": return <AdminAnalytics members={members} stats={safeStats} />;
-      case "cycles": return <AdminCycles cycles={payCycles} onAddCycle={onAddCycle} onEditCycle={onEditCycle} onDeleteCycle={onDeleteCycle} commissionRate={commissionRate} onUpdateCommission={onUpdateCommission!} />;
-      case "audit": 
-        return (
-           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in">
-              <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700"><h3 className="font-semibold text-slate-900 dark:text-white">Activity Log</h3></div>
-              <div className="max-h-[600px] overflow-y-auto">
-                 <table className="w-full text-left">
-                    <thead className="bg-slate-50 dark:bg-slate-900/50 sticky top-0">
-                       <tr>
-                          <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Time</th>
-                          <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">User</th>
-                          <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Action</th>
-                          <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Details</th>
-                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                       {activityLogs.length === 0 ? (
-                          <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-500">No activity recorded yet.</td></tr>
-                       ) : (
-                          activityLogs.slice().reverse().map(log => (
-                             <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20">
-                                <td className="px-6 py-3 text-xs text-slate-500">{new Date(log.timestamp).toLocaleString()}</td>
-                                <td className="px-6 py-3 text-sm font-medium text-slate-900 dark:text-white">{log.userName}</td>
-                                <td className="px-6 py-3">
-                                   <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                      log.action === 'create' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
-                                      log.action === 'delete' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' :
-                                      log.action === 'update' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' :
-                                      'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
-                                   }`}>{log.action.toUpperCase()}</span>
-                                </td>
-                                <td className="px-6 py-3 text-sm text-slate-600 dark:text-slate-300">{log.details}</td>
-                             </tr>
-                          ))
-                       )}
-                    </tbody>
-                 </table>
-              </div>
-           </div>
-        );
-
-      case "overview":
-      default:
-        return (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-            
-            {/* CYCLE BANNER */}
-            <div className={`rounded-xl p-4 flex items-center justify-between border ${activeCycle ? 'bg-indigo-50 border-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-900/50' : 'bg-slate-50 border-slate-100 dark:bg-slate-800 dark:border-slate-700'}`}>
-                <div className="flex items-center gap-3">
-                   <div className={`p-2 rounded-lg ${activeCycle ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400' : 'bg-slate-200 text-slate-500'}`}>
-                      {activeCycle ? <IconCycle className="w-5 h-5" /> : <IconLayout className="w-5 h-5" />}
-                   </div>
-                   <div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">{activeCycle ? 'Viewing Active Cycle' : 'Viewing Lifetime Data'}</h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{activeCycle ? `${formatDate(activeCycle.startDate)} — ${formatDate(activeCycle.endDate)}` : 'No active pay cycle set. Showing all-time stats.'}</p>
-                   </div>
-                </div>
-                {cycleUrgency && (
-                   <div className="flex items-center gap-2 px-3 py-1 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-300 rounded-lg text-xs font-bold animate-pulse">
-                      <IconTimer className="w-4 h-4" /> Ends in {cycleUrgency} days
-                   </div>
-                )}
-            </div>
-
-            {/* LEADERBOARD WIDGET */}
-            {members.length > 0 && (
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
-                  {members.sort((a,b) => b.onboardedCount - a.onboardedCount).slice(0,3).map((m, idx) => (
-                     <div key={m.id} className={`relative p-4 rounded-2xl border flex items-center gap-4 ${idx === 0 ? 'bg-gradient-to-br from-yellow-50 to-orange-50 border-orange-100 dark:from-yellow-900/10 dark:to-orange-900/10 dark:border-orange-900/30' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
-                        <div className={`absolute -top-3 -right-3 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-sm border-2 border-white dark:border-slate-800 ${idx === 0 ? 'bg-yellow-400 text-yellow-900' : idx === 1 ? 'bg-slate-300 text-slate-800' : 'bg-orange-300 text-orange-900'}`}>#{idx+1}</div>
-                        <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xl overflow-hidden border border-slate-200 dark:border-slate-600">
-                           {m.avatarId && m.avatarId !== 'initial' ? (
-                              <div className="w-8 h-8 text-indigo-600 dark:text-indigo-400">{getAvatarIcon(m.avatarId)}</div>
-                           ) : (
-                              <span className="text-lg font-bold uppercase text-slate-500 dark:text-slate-400">{m.name.charAt(0)}</span>
-                           )}
-                        </div>
-                        <div>
-                           <div className="font-bold text-slate-900 dark:text-white">{m.name}</div>
-                           <div className="text-xs text-slate-500">{m.onboardedCount} Onboarded</div>
-                        </div>
-                     </div>
-                  ))}
-               </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/50 shadow-sm">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl text-emerald-600 dark:text-emerald-400"><IconDollarSign className="w-6 h-6" /></div>
-                  <div><p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Team Earnings</p><h3 className="text-2xl font-bold text-slate-900 dark:text-white">{formatCurrency(totalEarnings)}</h3></div>
-                </div>
-              </div>
-              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/50 shadow-sm">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl text-indigo-600 dark:text-indigo-400"><IconCheck className="w-6 h-6" /></div>
-                  <div><p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Onboarded</p><h3 className="text-2xl font-bold text-slate-900 dark:text-white">{totalOnboarded}</h3></div>
-                </div>
-              </div>
-              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/50 shadow-sm">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl text-blue-600 dark:text-blue-400"><IconUsers className="w-6 h-6" /></div>
-                  <div><p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Active Agents</p><h3 className="text-2xl font-bold text-slate-900 dark:text-white">{activeAgents} <span className="text-sm font-normal text-slate-400">/ {members.length}</span></h3></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
-                <h3 className="font-semibold text-slate-900 dark:text-white">Agent Performance</h3>
-                <div className="flex items-center gap-3">
-                    {onLogOnboard && (
-                        <button 
-                            onClick={onLogOnboard}
-                            className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-all hover:scale-105 active:scale-95 shadow-md shadow-indigo-200/50 dark:shadow-none"
-                        >
-                            <IconSparkles className="w-3 h-3" /> Log Onboard
-                        </button>
-                    )}
-                    <button onClick={downloadReport} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-lg transition-colors">
-                        <IconDownload className="w-3 h-3" /> Export CSV
-                    </button>
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 dark:bg-slate-900/50">
-                    <tr>
-                      <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Agent</th>
-                      <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Onboarded</th>
-                      <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Earnings</th>
-                      <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                    {members.length === 0 ? (
-                      <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-500">No agents found.</td></tr>
-                    ) : (
-                      members.map(agent => (
-                        <tr key={agent.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-200 dark:border-indigo-800 overflow-hidden">
-                                {agent.avatarId && agent.avatarId !== 'initial' ? (
-                                   <div className="w-5 h-5">{getAvatarIcon(agent.avatarId)}</div>
-                                ) : (
-                                   <span className="text-xs font-bold uppercase">{agent.name.charAt(0)}</span>
-                                )}
-                              </div>
-                              <div className="font-medium text-slate-900 dark:text-white">{agent.name}</div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${agent.status === 'Online' ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-900' : 'bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'}`}>{agent.status}</span></td>
-                          <td className="px-6 py-4 text-right text-slate-600 dark:text-slate-300 font-medium">{agent.onboardedCount}</td>
-                          <td className="px-6 py-4 text-right font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(agent.totalEarnings)}</td>
-                          <td className="px-6 py-4 text-center">
-                            {onDeleteUser && (
-                                <button onClick={() => onDeleteUser(agent.id)} className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors" title="Delete User">
-                                    <IconTrash className="w-4 h-4" />
-                                </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        );
+      case "analytics": return <AdminAnalytics members={members} stats={stats!} appointments={appointments} payCycles={payCycles} users={allUsers!} />;
+      case "cycles": return <AdminCycles cycles={payCycles} onAddCycle={onAddCycle} onEditCycle={onEditCycle} onDeleteCycle={onDeleteCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} onUpdateMasterCommissions={onUpdateMasterCommissions} />;
+      case "audit": return (<div className="bg-white dark:bg-slate-800 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in flex flex-col h-[700px]"><div className="px-8 py-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center shrink-0"><h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2"><IconClipboardList className="w-5 h-5 text-indigo-500" /> Activity Audit</h3></div><div className="flex-1 overflow-y-auto no-scrollbar"><table className="w-full text-left"><thead className="bg-slate-50 dark:bg-slate-900/50 sticky top-0 z-10 border-b border-slate-100 dark:border-slate-700/50"><tr><th className="px-8 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Time</th><th className="px-8 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Agent</th><th className="px-8 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Action</th><th className="px-8 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Details</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">{activityLogs.slice().reverse().filter(log => !log.details.toLowerCase().includes('updated profile settings')).map(log => (<tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors"><td className="px-8 py-4 text-xs text-slate-400 tabular-nums">{new Date(log.timestamp).toLocaleString()}</td><td className="px-8 py-4 text-sm font-bold text-slate-900 dark:text-white">{log.userName}</td><td className="px-8 py-4"><span className="text-[10px] font-black px-2 py-1 rounded bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 uppercase tracking-tighter">{log.action}</span></td><td className="px-8 py-4 text-sm text-slate-600 dark:text-slate-400">{log.details}</td></tr>))}</tbody></table></div></div>);
+      case "overview": default: return renderOverview();
     }
   };
 
   return (
     <div className="flex flex-col h-full relative">
-      {/* ADMIN ALERT POPUP */}
-      {adminAlert && adminAlert.isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in zoom-in duration-500">
-           <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white p-8 rounded-3xl shadow-2xl max-w-sm text-center relative overflow-hidden">
-              <div className="absolute inset-0 bg-white/10 animate-pulse"></div>
-              <div className="relative z-10">
-                 <div className="w-20 h-20 bg-yellow-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl shadow-yellow-500/50 animate-bounce">
-                    <IconSparkles className="w-10 h-10 text-yellow-900" />
-                 </div>
-                 <h2 className="text-2xl font-extrabold mb-2">Team Milestone Alert!</h2>
-                 <div className="text-xs bg-indigo-500/50 inline-block px-3 py-1 rounded-full mb-4 font-bold border border-indigo-400/50">
-                    {adminAlert.milestone} Onboards
-                 </div>
-                 <p className="text-indigo-100 mb-6 font-medium leading-relaxed">{adminAlert.message}</p>
-                 <button 
-                   onClick={() => setAdminAlert(null)}
-                   className="w-full py-3 bg-white text-indigo-700 font-bold rounded-xl hover:bg-indigo-50 transition-colors shadow-lg"
-                 >
-                   Acknowledge
-                 </button>
-              </div>
+      <div className="sticky top-0 z-40 bg-slate-50 dark:bg-slate-950 px-4 sm:px-6 lg:px-8 py-3 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 dark:border-slate-800">
+        <div className="flex items-center justify-between w-full">
+           <div className="flex items-center gap-4">
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white">Dashboard</h2>
+              <div className="flex bg-slate-200/50 dark:bg-slate-800 p-1 rounded-2xl shadow-inner ml-4"><button onClick={() => setActiveTab("overview")} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${activeTab === "overview" ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>Overview</button><button onClick={() => setActiveTab("analytics")} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${activeTab === "analytics" ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>Deep Dive</button><button onClick={() => setActiveTab("cycles")} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${activeTab === "cycles" ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>Cycles</button><button onClick={() => setActiveTab("audit")} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${activeTab === "audit" ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>Audit Log</button></div>
            </div>
-        </div>
-      )}
-
-      {/* STICKY ADMIN HEADER */}
-      <div className="sticky top-0 z-40 bg-slate-50 dark:bg-slate-950 px-4 sm:px-6 lg:px-8 py-3 border-b border-slate-200/50 dark:border-slate-800/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
-        <div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Admin Portal</h2>
-            <p className="text-slate-500 text-xs">Manage team, cycles and analytics</p>
-        </div>
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl overflow-x-auto max-w-full">
-          <button onClick={() => setActiveTab("overview")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === "overview" ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}><IconLayout className="w-4 h-4" /> Overview</button>
-          <button onClick={() => setActiveTab("analytics")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === "analytics" ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}><IconChartBar className="w-4 h-4" /> Analytics</button>
-          <button onClick={() => setActiveTab("cycles")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === "cycles" ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}><IconCycle className="w-4 h-4" /> Pay Cycles</button>
-          <button onClick={() => setActiveTab("audit")} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === "audit" ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}><IconClipboardList className="w-4 h-4" /> Audit Log</button>
+           
+           {/* Log Onboard Button inside Admin Dashboard component */}
+           <button 
+             onClick={onLogOnboard}
+             className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xl transition-all active:scale-95 text-sm font-bold animate-in slide-in-from-right-2 duration-500 shadow-indigo-200 dark:shadow-none"
+           >
+             <IconSparkles className="w-5 h-5" /> 
+             Log Onboarded Partner
+           </button>
         </div>
       </div>
-      
-      {/* SCROLLABLE CONTENT */}
-      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
-        {renderContent()}
-      </div>
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">{renderContent()}</div>
     </div>
   );
 };

@@ -2,19 +2,26 @@
 import React, { useState } from 'react';
 import { ACCOUNT_EXECUTIVES } from '../types';
 import { CustomSelect } from './CustomSelect';
-import { IconBriefcase, IconX, IconCheck } from './Icons';
+import { IconBriefcase, IconX, IconCheck, IconSparkles } from './Icons';
 
 interface AESelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (aeName: string) => void;
+  agentName?: string;
 }
 
-export const AESelectionModal: React.FC<AESelectionModalProps> = ({ isOpen, onClose, onConfirm }) => {
+export const AESelectionModal: React.FC<AESelectionModalProps> = ({ isOpen, onClose, onConfirm, agentName }) => {
   const [selectedAE, setSelectedAE] = useState('');
   const [error, setError] = useState(false);
 
   if (!isOpen) return null;
+
+  // Build AE Options: Default List + Current User
+  const aeOptions = [...ACCOUNT_EXECUTIVES];
+  if (agentName && !aeOptions.includes(agentName)) {
+      aeOptions.push(agentName);
+  }
 
   const handleSubmit = () => {
     if (!selectedAE) {
@@ -26,6 +33,8 @@ export const AESelectionModal: React.FC<AESelectionModalProps> = ({ isOpen, onCl
     setError(false);
     onClose();
   };
+
+  const isSelf = selectedAE === agentName && !!agentName;
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -48,12 +57,17 @@ export const AESelectionModal: React.FC<AESelectionModalProps> = ({ isOpen, onCl
         <div className="space-y-4">
            <div>
               <CustomSelect 
-                options={ACCOUNT_EXECUTIVES}
+                options={aeOptions}
                 value={selectedAE}
                 onChange={(val) => { setSelectedAE(val); setError(false); }}
                 placeholder="Select Account Executive..."
                 className="w-full"
               />
+              {isSelf && (
+                  <div className="mt-2 p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold rounded-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                      <IconSparkles className="w-3 h-3" /> Special Achievement: Self-Onboard
+                  </div>
+              )}
               {error && (
                 <p className="text-xs text-rose-500 font-medium mt-2 ml-1">Please select an AE to proceed.</p>
               )}

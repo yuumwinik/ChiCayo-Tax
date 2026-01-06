@@ -5,15 +5,12 @@ export enum AppointmentStage {
   NO_SHOW = 'NO_SHOW',
   ONBOARDED = 'ONBOARDED',
   DECLINED = 'DECLINED',
-  TRANSFERRED = 'TRANSFERRED', // New Stage
+  TRANSFERRED = 'TRANSFERRED',
 }
 
 export type View = 'dashboard' | 'calendar' | 'onboarded' | 'earnings-full' | 'admin-dashboard' | 'profile' | 'user-analytics';
-
 export type UserRole = 'agent' | 'admin';
-
 export type AdminView = 'overview' | 'analytics' | 'cycles' | 'audit';
-
 export type AvatarId = 'initial' | 'robot' | 'alien' | 'ghost' | 'fire' | 'zap' | 'crown' | 'star' | 'smile';
 
 export const ACCOUNT_EXECUTIVES = ['Joshua', 'Jorge', 'Andrew'];
@@ -24,9 +21,16 @@ export const AE_COLORS: Record<string, string> = {
   'Andrew': 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800',
 };
 
+export interface GlobalSettings {
+  id: string;
+  commission_standard: number;
+  commission_self: number;
+  updated_at: string;
+}
+
 export interface NotificationSettings {
   enabled: boolean;
-  thresholdMinutes: number; // 5, 10, 15, 30
+  thresholdMinutes: number;
 }
 
 export interface User {
@@ -35,10 +39,37 @@ export interface User {
   email: string;
   role: UserRole;
   avatarId?: AvatarId;
-  createdAt?: string; // ISO Date string of signup
+  createdAt?: string;
   hasSeenTutorial?: boolean;
   notificationSettings?: NotificationSettings;
-  preferredDialer?: string; // New field for Dialer App Name (e.g. 'Genesys', 'Skype')
+  preferredDialer?: string;
+  dismissedCycleIds?: string[];
+}
+
+export type IncentiveRuleType = 'one_time' | 'per_deal' | 'challenge' | 'up_for_grabs';
+
+export interface IncentiveRule {
+  id: string;
+  userId: string | 'team';
+  type: IncentiveRuleType;
+  valueCents: number;
+  label: string;
+  startTime?: string;
+  endTime?: string;
+  targetCount?: number;
+  currentCount?: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface Incentive {
+  id: string;
+  userId: string | 'team';
+  amountCents: number;
+  label: string;
+  createdAt: string;
+  appliedCycleId: string;
+  ruleId?: string; // Links back to the rule that created it
 }
 
 export interface TeamMember {
@@ -54,8 +85,8 @@ export interface TeamMember {
 
 export interface PayCycle {
   id: string;
-  startDate: string; // ISO
-  endDate: string; // ISO
+  startDate: string;
+  endDate: string;
   status: 'active' | 'upcoming' | 'completed';
 }
 
@@ -65,11 +96,11 @@ export interface Appointment {
   name: string;
   phone: string;
   email: string;
-  scheduledAt: string; // ISO String
+  scheduledAt: string;
   stage: AppointmentStage;
   notes?: string;
   createdAt: string;
-  earnedAmount?: number; // Cents earned at the time of onboarding
+  earnedAmount?: number;
   type?: 'appointment' | 'transfer';
   aeName?: string;
 }
@@ -77,26 +108,22 @@ export interface Appointment {
 export interface EarningWindow {
   id: string;
   userId: string;
-  startDate: string; // ISO String
-  endDate: string; // ISO String
+  startDate: string;
+  endDate: string;
   totalCents: number;
   onboardedCount: number;
   isClosed: boolean;
+  incentives?: Incentive[];
 }
 
 export interface ActivityLog {
   id: string;
   userId: string;
   userName: string;
-  action: 'create' | 'update' | 'delete' | 'move_stage' | 'login';
+  action: 'create' | 'update' | 'delete' | 'move_stage' | 'login' | 'commission_change';
   details: string;
   timestamp: string;
-  relatedId?: string; // Appointment ID or User ID
-}
-
-export interface UserSettings {
-  theme: 'light' | 'dark' | 'system';
-  isSidebarOpen: boolean;
+  relatedId?: string;
 }
 
 export interface DashboardStats {
@@ -106,18 +133,13 @@ export interface DashboardStats {
   totalFailed: number;
   totalRescheduled: number;
   conversionRate: string;
-  
-  // Live Transfer Intelligence
   totalTransfers: number;
   transfersOnboarded: number;
   transfersDeclined: number;
   transferConversionRate: string;
-  
-  // Appointment -> Transfer Intelligence
   appointmentsTransferred: number;
   apptTransferConversionRate: string;
-  
-  aePerformance: Record<string, number>; // AE Name -> Onboarded Count
+  aePerformance: Record<string, number>;
 }
 
 export const STAGE_LABELS: Record<AppointmentStage, string> = {

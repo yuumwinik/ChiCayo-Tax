@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { View, UserRole, AvatarId } from '../types';
-import { IconCalendar, IconLayout, IconUsers, IconDollarSign, IconLogo, IconLogout, IconSidebarToggle, IconLock, getAvatarIcon, IconActivity } from './Icons';
+import { IconCalendar, IconLayout, IconUsers, IconDollarSign, IconLogo, IconLogout, IconSidebarToggle, IconLock, getAvatarIcon, IconActivity, IconSparkles } from './Icons';
 
 interface SidebarProps {
   currentView: View;
@@ -14,6 +14,9 @@ interface SidebarProps {
   userRole: UserRole;
   userAvatar?: AvatarId;
   userName?: string;
+  // NEW: Props for Win Ticker control
+  isTickerVisible: boolean;
+  onToggleTicker: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
@@ -26,7 +29,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
   userRole,
   userAvatar,
-  userName
+  userName,
+  isTickerVisible,
+  onToggleTicker
 }) => {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: IconLayout, role: 'all' },
@@ -126,6 +131,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
                  </button>
                )
              })}
+
+             {/* LIVE PULSE TOGGLE - Only visible if expanded */}
+             {!isCollapsed && (
+                <div className="pt-8 px-3 animate-in fade-in slide-in-from-top-2 duration-500">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                                <div className={`p-1.5 rounded-lg ${isTickerVisible ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-500'}`}>
+                                    <IconSparkles className="w-3.5 h-3.5" />
+                                </div>
+                                <span className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Live Pulse</span>
+                            </div>
+                            <button 
+                                onClick={onToggleTicker}
+                                className={`relative w-10 h-5 rounded-full transition-colors ${isTickerVisible ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                            >
+                                <div className={`absolute top-1 left-1 bg-white w-3 h-3 rounded-full transition-transform ${isTickerVisible ? 'translate-x-5' : 'translate-x-0'}`} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+             )}
           </div>
 
           {/* Footer */}
