@@ -1,0 +1,47 @@
+
+{
+  "name": "chicayo-tax",
+  "version": "1.0.0",
+  "description": "ChiCayo Tax Appointment Tracker",
+  "main": "electron.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "@google/genai": "^0.1.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "concurrently": "^8.2.0",
+    "cross-env": "^7.0.3",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "typescript": "^5.0.0",
+    "vite": "^4.4.0",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.chicayo.tax",
+    "productName": "ChiCayo Tax",
+    "files": [
+      "dist/**/*",
+      "electron.js"
+    ],
+    "directories": {
+      "output": "dist_electron"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.ico"
+    }
+  }
+}
