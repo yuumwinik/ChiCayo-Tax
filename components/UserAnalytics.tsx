@@ -1,22 +1,24 @@
+
 import React, { useState, useMemo } from 'react';
 import { Appointment, AppointmentStage, EarningWindow, PayCycle, ACCOUNT_EXECUTIVES, Incentive, TeamMember, User } from '../types';
 import { formatCurrency, formatDate } from '../utils/dateUtils';
-import { IconTrendingUp, IconBriefcase, IconTransfer, IconCheck, IconCycle, IconClock, IconChevronDown, IconActivity, IconSparkles, IconTrophy, IconChartBar } from './Icons';
+import { IconTrendingUp, IconBriefcase, IconTransfer, IconCheck, IconCycle, IconClock, IconChevronDown, IconActivity, IconSparkles, IconTrophy, IconChartBar, IconUsers } from './Icons';
 import { CustomSelect } from './CustomSelect';
 
 interface UserAnalyticsProps {
-  appointments: Appointment[]; // Personal scoped appointments
-  allAppointments: Appointment[]; // Full team data
-  allIncentives: Incentive[]; // Full team data
+  appointments: Appointment[]; 
+  allAppointments: Appointment[]; 
+  allIncentives: Incentive[]; 
   earnings: { current: EarningWindow | null; history: EarningWindow[] };
   activeCycle?: PayCycle;
   payCycles?: PayCycle[];
   currentUserName?: string;
   currentUser: User;
+  referralRate: number;
 }
 
 export const UserAnalytics: React.FC<UserAnalyticsProps> = ({ 
-  appointments, allAppointments, allIncentives, earnings, activeCycle, payCycles = [], currentUserName, currentUser
+  appointments, allAppointments, allIncentives, earnings, activeCycle, payCycles = [], currentUserName, currentUser, referralRate
 }) => {
   const [selectedScopeId, setSelectedScopeId] = useState<string>('active');
   const [expandedCycles, setExpandedCycles] = useState<Set<string>>(new Set());
@@ -58,7 +60,6 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
         scopeType = 'lifetime';
     }
 
-    // Apply Scope Filters
     if (scopeType !== 'lifetime' && start !== null && end !== null) {
         const s = start; const e = end;
         personalFiltered = personalFiltered.filter(a => { const d = new Date(a.scheduledAt).getTime(); return d >= s && d <= e; });
@@ -70,10 +71,17 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
 
     const aeBreakdown: Record<string, number> = { 'Joshua': 0, 'Jorge': 0, 'Andrew': 0 };
     if (currentUserName) aeBreakdown[currentUserName] = 0;
-    personalOnboarded.forEach(a => { if (a.aeName && aeBreakdown.hasOwnProperty(a.aeName)) aeBreakdown[a.aeName]++; });
+    
+    personalOnboarded.forEach(a => { 
+        if (a.aeName && aeBreakdown.hasOwnProperty(a.aeName)) aeBreakdown[a.aeName]++; 
+        else if (!a.aeName && currentUserName) aeBreakdown[currentUserName]++;
+    });
 
-    // Personal Revenue (Production + Bonuses specifically for ME)
-    const personalProdRevenue = personalOnboarded.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
+    const totalReferrals = personalOnboarded.reduce((sum, a) => sum + (a.referralCount || 0), 0);
+    const personalReferralRevenue = totalReferrals * referralRate;
+
+    const personalProdRevenue = personalOnboarded.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0) + personalReferralRevenue;
+
     const personalBonusRevenue = allIncentives.filter(i => {
         if (i.userId !== currentUser.id && i.userId !== 'team') return false;
         if (scopeType === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
@@ -83,30 +91,31 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
 
     const myTotalRevenue = personalProdRevenue + personalBonusRevenue;
 
-    // Team Revenue Pool (Production from EVERYONE + Incentives paid to ANYONE)
-    const teamProdRevenue = teamOnboarded.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
-    const teamBonusRevenue = allIncentives.filter(i => {
+    const teamTotalPool = teamOnboarded.reduce((sum, a) => {
+        const base = Number(a.earnedAmount) || 0;
+        const refs = (a.referralCount || 0) * referralRate;
+        return sum + base + refs;
+    }, 0) + allIncentives.filter(i => {
         if (scopeType === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
         if (scopeType === 'history' && i.appliedCycleId !== selectedScopeId) return false;
         return true;
     }).reduce((sum, i) => sum + Number(i.amountCents), 0);
-
-    const teamTotalPool = teamProdRevenue + teamBonusRevenue;
 
     return { 
         total: personalFiltered.length, 
         onboarded: personalOnboarded.length, 
         revenue: myTotalRevenue, 
         bonusRevenue: personalBonusRevenue, 
+        referralRevenue: personalReferralRevenue,
+        referralCount: totalReferrals,
         aeBreakdown, 
-        selfOnboards: personalOnboarded.filter(a => a.aeName === currentUserName).length, 
+        selfOnboards: personalOnboarded.filter(a => !a.aeName || a.aeName === currentUserName).length, 
         scopeLabel: label,
         teamPoolTotal: teamTotalPool,
         scopeType
     };
-  }, [appointments, allAppointments, allIncentives, selectedScopeId, activeCycle, payCycles, currentUserName, currentUser.id]);
+  }, [appointments, allAppointments, allIncentives, selectedScopeId, activeCycle, payCycles, currentUserName, currentUser.id, referralRate]);
 
-  // Contribution Calculation
   const currentRevenue: number = Number(scopedData.revenue) || 0;
   const poolTotal: number = Number(scopedData.teamPoolTotal) || 0;
   const contributionPercentage = poolTotal > 0 ? Math.round((currentRevenue / poolTotal) * 100) : 0;
@@ -142,7 +151,6 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl transform translate-x-10 -translate-y-10"></div>
           </div>
 
-          {/* Team Influence Widget - Responsive to Scope */}
           <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-6 border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-6 animate-in slide-in-from-right-4 duration-500">
              <div className="relative w-28 h-28 shrink-0">
                 <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full drop-shadow-sm">
@@ -166,12 +174,18 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
           </div>
        </div>
 
-       {scopedData.bonusRevenue > 0 && (
-         <div className="bg-amber-50 dark:bg-amber-900/10 border-2 border-amber-200 dark:border-amber-900/50 p-6 rounded-[2rem] flex items-center gap-6 animate-in slide-in-from-right-4 duration-700">
-            <div className="p-4 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-200 dark:shadow-none"><IconTrophy className="w-8 h-8" /></div>
-            <div>
-               <h3 className="text-xl font-black text-amber-900 dark:text-amber-400 uppercase tracking-tighter">Incentive Edge</h3>
-               <p className="text-sm font-bold text-amber-700 dark:text-amber-500/80">You've locked in <span className="text-amber-600 dark:text-amber-300 font-black">{formatCurrency(scopedData.bonusRevenue)}</span> from extra challenges in this scope.</p>
+       {scopedData.referralCount > 0 && (
+         <div className="bg-emerald-50 dark:bg-emerald-900/10 border-2 border-emerald-200 dark:border-emerald-900/50 p-8 rounded-[2.5rem] flex flex-col md:flex-row items-center gap-8 animate-in slide-in-from-bottom-4 duration-700">
+            <div className="p-6 bg-emerald-600 text-white rounded-3xl shadow-xl shadow-emerald-200 dark:shadow-none shrink-0 group hover:rotate-6 transition-transform">
+               <IconUsers className="w-10 h-10" />
+            </div>
+            <div className="flex-1 text-center md:text-left">
+               <h3 className="text-2xl font-black text-emerald-900 dark:text-emerald-400 uppercase tracking-tighter">Referral Multiplier</h3>
+               <p className="text-sm font-bold text-emerald-700 dark:text-emerald-500/80 max-w-md">Your legacy clients are working for you! You've earned an extra <span className="text-emerald-600 dark:text-emerald-300 font-black">{formatCurrency(scopedData.referralRevenue)}</span> from {scopedData.referralCount} referrals sent by onboarded partners.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4 w-full md:w-auto">
+               <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-emerald-100 text-center"><span className="block text-[10px] font-black text-slate-400 uppercase">Referrals</span><span className="text-2xl font-black text-emerald-600">{scopedData.referralCount}</span></div>
+               <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-emerald-100 text-center"><span className="block text-[10px] font-black text-slate-400 uppercase">Bonus</span><span className="text-2xl font-black text-emerald-600">${(scopedData.referralRevenue/100)}</span></div>
             </div>
          </div>
        )}
@@ -237,14 +251,18 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                               <div className="space-y-2">
                                 <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Onboarded Leads</h5>
                                 <div className="max-h-[150px] overflow-y-auto no-scrollbar space-y-1">
-                                    {/* Fix: Use 'appointments' prop directly instead of 'personalFiltered' which is local to the scopedData useMemo block */}
                                     {appointments.filter(a => {
                                        const d = new Date(a.scheduledAt).getTime();
-                                       return a.stage === AppointmentStage.ONBOARDED && d >= new Date(win.startDate).getTime() && d <= new Date(win.endDate).getTime();
+                                       const winStart = new Date(win.startDate).getTime();
+                                       const winEnd = new Date(win.endDate).setHours(23,59,59,999);
+                                       return a.stage === AppointmentStage.ONBOARDED && d >= winStart && d <= winEnd;
                                     }).map(a => (
                                       <div key={a.id} className="flex justify-between items-center text-xs p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                                         <span className="font-medium text-slate-600 dark:text-slate-300">{a.name}</span>
-                                         <span className="font-bold text-emerald-600">+{formatCurrency(a.earnedAmount || 200)}</span>
+                                         <div>
+                                            <span className="font-bold text-slate-900 dark:text-white block">{a.name}</span>
+                                            {a.referralCount ? <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest">{a.referralCount} Referrals included</span> : null}
+                                         </div>
+                                         <span className="font-bold text-emerald-600">+{formatCurrency((a.earnedAmount || 0) + (a.referralCount || 0) * referralRate)}</span>
                                       </div>
                                     ))}
                                 </div>

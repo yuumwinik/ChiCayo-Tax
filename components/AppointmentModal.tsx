@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Appointment, AppointmentStage, STAGE_LABELS, ACCOUNT_EXECUTIVES } from '../types';
 import { IconX, IconTrash, IconBriefcase, IconCheck, IconSparkles, IconTransfer, IconActivity, IconClock, IconNotes, IconCalendar } from './Icons';
@@ -13,6 +14,7 @@ interface AppointmentModalProps {
   initialData?: Appointment | null;
   isRescheduling?: boolean;
   agentName?: string;
+  isAdmin?: boolean;
   commissionRate: number;
   selfCommissionRate: number;
 }
@@ -25,6 +27,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
   initialData,
   isRescheduling = false,
   agentName,
+  isAdmin = false,
   commissionRate,
   selfCommissionRate
 }) => {
@@ -50,11 +53,13 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
   const minutes = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
   const stageOptions = Object.values(AppointmentStage).map(stage => ({ value: stage, label: STAGE_LABELS[stage] }));
 
+  // Build AE list: Only allow current agent's name for self-onboard if they aren't an admin
   const aeOptions = [...ACCOUNT_EXECUTIVES];
-  if (agentName && !aeOptions.includes(agentName)) {
+  if (!isAdmin && agentName && !aeOptions.includes(agentName)) {
       aeOptions.push(agentName);
   }
 
+  // Effect to reset state when modal opens or initialData changes
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
@@ -81,7 +86,17 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
           type: initialData.type || 'appointment'
         });
       } else {
-        setFormData({ name: '', phone: '', email: '', date: new Date().toLocaleDateString('en-CA'), notes: '', stage: AppointmentStage.PENDING, aeName: '', type: 'appointment' });
+        // Explicitly reset everything for "New" mode
+        setFormData({ 
+            name: '', 
+            phone: '', 
+            email: '', 
+            date: new Date().toLocaleDateString('en-CA'), 
+            notes: '', 
+            stage: AppointmentStage.PENDING, 
+            aeName: '', 
+            type: 'appointment' 
+        });
         setTimeHour('9'); setTimeMinute('00'); setTimeAmPm('AM');
         setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
         setIsSelfOnboard(false);
@@ -91,12 +106,12 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
   }, [isOpen, initialData, isRescheduling, agentName]);
 
   useEffect(() => {
-      if (isSelfOnboard && agentName) {
+      if (isSelfOnboard && agentName && !isAdmin) {
           setFormData(prev => ({ ...prev, aeName: agentName }));
       } else if (!isSelfOnboard && formData.aeName === agentName) {
           setFormData(prev => ({ ...prev, aeName: '' }));
       }
-  }, [isSelfOnboard, agentName]);
+  }, [isSelfOnboard, agentName, isAdmin]);
 
   if (!isOpen) return null;
 
@@ -135,7 +150,6 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
     if (formData.type === 'transfer') {
         finalStage = isSelfOnboard ? AppointmentStage.ONBOARDED : AppointmentStage.TRANSFERRED;
     } else {
-        // Appointments don't have AEs assigned yet
         finalAeName = '';
     }
 
@@ -212,7 +226,6 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
                 </div>
 
                 <div className="space-y-4">
-                    {/* ACCOUNT EXECUTIVE DROPDOWN: ONLY SHOWN FOR TRANSFERS */}
                     {formData.type === 'transfer' && (
                         <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
                             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Account Executive (Closer)</label>

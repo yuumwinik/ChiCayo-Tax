@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { TeamMember, DashboardStats, Appointment, PayCycle, AppointmentStage, User, AE_COLORS } from '../../types';
+import { TeamMember, DashboardStats, Appointment, PayCycle, AppointmentStage, User, AE_COLORS, ACCOUNT_EXECUTIVES } from '../../types';
 import { IconTrendingUp, IconTransfer, IconBriefcase, IconCheck, IconX, IconCalendar, IconFilter, IconActivity, IconTrophy, IconChartBar, IconSparkles, IconDownload, IconUsers, IconDollarSign, IconChevronLeft, IconChevronRight } from '../Icons';
 import { CustomSelect } from '../CustomSelect';
 import { formatDate, formatCurrency } from '../../utils/dateUtils';
@@ -17,9 +17,8 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
   const [selectedCycleId, setSelectedCycleId] = useState<string>('active');
   const [selectedAgentId, setSelectedAgentId] = useState<string>('all');
   
-  // Carousel States
-  const [pipelineView, setPipelineView] = useState(0); // 0: Stages, 1: AE Mix, 2: Self-Onboard Mix, 3: Revenue Pool
-  const [leaderboardView, setLeaderboardView] = useState(0); // 0: Agent Total, 1: AE Closers, 2: Self-Onboard Mastery
+  const [pipelineView, setPipelineView] = useState(0); 
+  const [leaderboardView, setLeaderboardView] = useState(0); 
 
   const cycleOptions = useMemo(() => {
     const base = [{ value: 'active', label: 'Current Cycle' }, { value: 'lifetime', label: 'Lifetime Stats' }];
@@ -60,12 +59,11 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
 
   const scopedData = useMemo(() => {
     const onboardedAppts = filteredAppointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
-    const total = filteredAppointments.length || 1;
+    const totalCount = filteredAppointments.length || 1;
     const onboardedCount = onboardedAppts.length;
     const pending = filteredAppointments.filter(a => a.stage === AppointmentStage.PENDING || a.stage === AppointmentStage.RESCHEDULED).length;
     const failed = filteredAppointments.filter(a => a.stage === AppointmentStage.NO_SHOW || a.stage === AppointmentStage.DECLINED).length;
     
-    // Revenue Breakdown
     let selfRev = 0;
     let transferRev = 0;
     let selfCount = 0;
@@ -73,8 +71,10 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
 
     onboardedAppts.forEach(a => {
         const agent = users.find(u => u.id === a.userId);
-        const isSelf = a.aeName === agent?.name;
-        const amt = a.earnedAmount !== undefined ? a.earnedAmount : (isSelf ? 500 : 200);
+        // CRITICAL FIX: Ensure aeName is strictly checked against the agent's name
+        const isSelf = !a.aeName || a.aeName === agent?.name;
+        
+        const amt = a.earnedAmount !== undefined ? a.earnedAmount : (isSelf ? 300 : 200);
         if (isSelf) {
             selfRev += amt;
             selfCount++;
@@ -84,13 +84,12 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
         }
     });
 
-    // Synergy: Agent -> AE mapping with revenue
     const synergy: Record<string, Record<string, { count: number, revenue: number }>> = {};
     onboardedAppts.forEach(a => {
         const agent = users.find(u => u.id === a.userId);
         const agentName = agent?.name || 'Unknown';
-        const isSelf = a.aeName === agentName;
-        const amt = a.earnedAmount !== undefined ? a.earnedAmount : (isSelf ? 500 : 200);
+        const isSelf = !a.aeName || a.aeName === agentName;
+        const amt = a.earnedAmount !== undefined ? a.earnedAmount : (isSelf ? 300 : 200);
 
         if (a.aeName && !isSelf) {
             if (!synergy[agentName]) synergy[agentName] = {};
@@ -105,7 +104,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
         onboarded: onboardedCount, 
         pending, 
         failed, 
-        convRate: ((onboardedCount / total) * 100).toFixed(1),
+        convRate: ((onboardedCount / totalCount) * 100).toFixed(1),
         selfOnboarded: selfCount,
         selfOnboardRate: onboardedCount > 0 ? ((selfCount / onboardedCount) * 100).toFixed(1) : '0.0',
         revenue: selfRev + transferRev,
@@ -115,27 +114,26 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
     };
   }, [filteredAppointments, users]);
 
-  // --- PIPELINE RING CALCULATIONS ---
   const radius = 40;
   const circumference = 2 * Math.PI * radius;
 
   const renderRing = (segments: { value: number, color: string, label: string }[], centerLabel: string, centerValue: string) => {
-      const total = segments.reduce((s, x) => s + x.value, 0) || 1;
-      let offset = 0;
+      const totalValue = segments.reduce((s, x) => s + x.value, 0) || 1;
+      let currentOffset = 0;
       return (
           <div className="relative w-56 h-56 group">
               <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full drop-shadow-xl transition-all duration-700">
                   <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#f1f5f9" strokeWidth="12" className="dark:stroke-slate-700/30"/>
                   {segments.map((seg, i) => {
-                      const len = (seg.value / total) * circumference;
-                      const currentOffset = offset;
-                      offset -= len;
+                      const len = (seg.value / totalValue) * circumference;
+                      const segmentOffset = currentOffset;
+                      currentOffset -= len;
                       return (
                           <circle 
                             key={i} cx="50" cy="50" r={radius} fill="transparent" 
                             stroke={seg.color} strokeWidth="14" 
                             strokeDasharray={`${len} ${circumference}`} 
-                            strokeDashoffset={currentOffset}
+                            strokeDashoffset={segmentOffset}
                             className="transition-all duration-1000 ease-out"
                           />
                       );
@@ -162,10 +160,14 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
       },
       {
           title: "Closer Distribution",
-          centerLabel: "Total Closes",
-          centerValue: scopedData.onboarded.toString(),
-          segments: ['Joshua', 'Jorge', 'Andrew'].map(name => ({
-              value: filteredAppointments.filter(a => a.aeName === name && a.stage === AppointmentStage.ONBOARDED).length,
+          centerLabel: "Team Assisted",
+          centerValue: (scopedData.onboarded - scopedData.selfOnboarded).toString(),
+          segments: ACCOUNT_EXECUTIVES.map(name => ({
+              // Only count deal if AE is NOT the agent owning the lead
+              value: filteredAppointments.filter(a => {
+                  const agent = users.find(u => u.id === a.userId);
+                  return a.aeName === name && a.stage === AppointmentStage.ONBOARDED && a.aeName !== agent?.name;
+              }).length,
               color: name === 'Joshua' ? '#3b82f6' : name === 'Jorge' ? '#f97316' : '#a855f7',
               label: name
           }))
@@ -177,7 +179,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
           segments: members.map((m, i) => {
               const colors = ['#06b6d4', '#ec4899', '#84cc16', '#eab308', '#6366f1'];
               return {
-                  value: filteredAppointments.filter(a => a.userId === m.id && a.aeName === m.name && a.stage === AppointmentStage.ONBOARDED).length,
+                  value: filteredAppointments.filter(a => a.userId === m.id && (!a.aeName || a.aeName === m.name) && a.stage === AppointmentStage.ONBOARDED).length,
                   color: colors[i % colors.length],
                   label: m.name
               }
@@ -188,13 +190,16 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
           centerLabel: "Total Revenue",
           centerValue: formatCurrency(scopedData.revenue),
           segments: [
-              ...['Joshua', 'Jorge', 'Andrew'].map(name => ({
-                  value: filteredAppointments.filter(a => a.aeName === name && a.stage === AppointmentStage.ONBOARDED).reduce((s,a) => s + (a.earnedAmount || 200), 0),
+              ...ACCOUNT_EXECUTIVES.map(name => ({
+                  value: filteredAppointments.filter(a => {
+                      const agent = users.find(u => u.id === a.userId);
+                      return a.aeName === name && a.stage === AppointmentStage.ONBOARDED && a.aeName !== agent?.name;
+                  }).reduce((s,a) => s + (a.earnedAmount || 200), 0),
                   color: name === 'Joshua' ? '#3b82f6' : name === 'Jorge' ? '#f97316' : '#a855f7',
                   label: `AE ${name}`
               })),
               ...members.map((m, i) => ({
-                  value: filteredAppointments.filter(a => a.userId === m.id && a.aeName === m.name && a.stage === AppointmentStage.ONBOARDED).reduce((s,a) => s + (a.earnedAmount || 500), 0),
+                  value: filteredAppointments.filter(a => a.userId === m.id && (!a.aeName || a.aeName === m.name) && a.stage === AppointmentStage.ONBOARDED).reduce((s,a) => s + (a.earnedAmount || 300), 0),
                   color: '#10b981',
                   label: `${m.name} (Self)`
               }))
@@ -204,7 +209,6 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
-       {/* HEADER & FILTERS */}
        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white dark:bg-slate-800 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex items-center gap-3">
              <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200 dark:shadow-none"><IconActivity className="w-6 h-6" /></div>
@@ -219,7 +223,6 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
           </div>
        </div>
 
-       {/* EARNINGS COMPOSITION - SELF VS TRANSFER */}
        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden group">
                <div className="relative z-10">
@@ -246,7 +249,6 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
        </div>
 
        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* PIPELINE CAROUSEL */}
           <div className="bg-white dark:bg-slate-800 p-8 rounded-[3rem] border border-slate-200 dark:border-slate-700 flex flex-col items-center shadow-sm relative group/card">
              <div className="w-full flex justify-between items-center mb-8">
                 <h4 className="font-black text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-tighter text-sm">
@@ -286,7 +288,6 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
              </div>
           </div>
 
-          {/* LEADERBOARD CAROUSEL */}
           <div className="bg-white dark:bg-slate-800 p-8 rounded-[3rem] border border-slate-200 dark:border-slate-700 shadow-sm relative group/board">
              <div className="w-full flex justify-between items-center mb-8">
                 <h4 className="font-black text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-tighter text-sm">
@@ -324,8 +325,12 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
                       );
                    })
                 ) : leaderboardView === 1 ? (
-                   ['Joshua', 'Jorge', 'Andrew'].map((ae, i) => {
-                       const count = filteredAppointments.filter(a => a.aeName === ae && a.stage === AppointmentStage.ONBOARDED).length;
+                   ACCOUNT_EXECUTIVES.map((ae, i) => {
+                       // Count only as assisted deal (ae is not the lead owner)
+                       const count = filteredAppointments.filter(a => {
+                           const agent = users.find(u => u.id === a.userId);
+                           return a.aeName === ae && a.stage === AppointmentStage.ONBOARDED && a.aeName !== agent?.name;
+                       }).length;
                        const color = ae === 'Joshua' ? 'bg-blue-500' : ae === 'Jorge' ? 'bg-orange-500' : 'bg-purple-500';
                        return (
                         <div key={ae} className="relative">
@@ -337,18 +342,18 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
                               <span className={`text-xs font-black ${color.replace('bg-', 'text-')}`}>{count} Closes</span>
                            </div>
                            <div className="h-1.5 bg-slate-50 dark:bg-slate-900 rounded-full overflow-hidden shadow-inner">
-                              <div className={`h-full ${color} rounded-full transition-all duration-1000`} style={{ width: `${(count/Math.max(1, scopedData.onboarded))*100}%` }} />
+                              <div className={`h-full ${color} rounded-full transition-all duration-1000`} style={{ width: `${(count/Math.max(1, (scopedData.onboarded - scopedData.selfOnboarded) || 1))*100}%` }} />
                            </div>
                         </div>
                        );
                    })
                 ) : (
                    members.sort((a,b) => {
-                       const ac = filteredAppointments.filter(app => app.userId === a.id && app.aeName === a.name && app.stage === AppointmentStage.ONBOARDED).length;
-                       const bc = filteredAppointments.filter(app => app.userId === b.id && app.aeName === b.name && app.stage === AppointmentStage.ONBOARDED).length;
+                       const ac = filteredAppointments.filter(app => app.userId === a.id && (!app.aeName || app.aeName === a.name) && app.stage === AppointmentStage.ONBOARDED).length;
+                       const bc = filteredAppointments.filter(app => app.userId === b.id && (!app.aeName || app.aeName === b.name) && app.stage === AppointmentStage.ONBOARDED).length;
                        return bc - ac;
                    }).map((m, i) => {
-                      const count = filteredAppointments.filter(a => a.userId === m.id && a.aeName === m.name && a.stage === AppointmentStage.ONBOARDED).length;
+                      const count = filteredAppointments.filter(a => a.userId === m.id && (!a.aeName || a.aeName === m.name) && a.stage === AppointmentStage.ONBOARDED).length;
                       return (
                         <div key={m.id} className="relative">
                            <div className="flex justify-between items-center mb-1.5">
@@ -359,7 +364,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
                               <span className="text-xs font-black text-emerald-600">{count} Self-Closed</span>
                            </div>
                            <div className="h-1.5 bg-slate-50 dark:bg-slate-900 rounded-full overflow-hidden shadow-inner">
-                              <div className="h-full bg-emerald-500 rounded-full transition-all duration-1000" style={{ width: `${(count/Math.max(1, scopedData.selfOnboarded))*100}%` }} />
+                              <div className="h-full bg-emerald-500 rounded-full transition-all duration-1000" style={{ width: `${(count/Math.max(1, scopedData.selfOnboarded || 1))*100}%` }} />
                            </div>
                         </div>
                       );
@@ -375,7 +380,6 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
           </div>
        </div>
 
-       {/* AGENT -> AE SYNERGY BREAKDOWN */}
        <div className="bg-white dark:bg-slate-800 rounded-[3rem] border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
           <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
              <div>
@@ -428,7 +432,6 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
              </div>
           </div>
        </div>
-
     </div>
   );
 };

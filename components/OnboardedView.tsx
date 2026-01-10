@@ -11,13 +11,14 @@ interface OnboardedViewProps {
   appointments: Appointment[];
   searchQuery: string;
   onEdit: (appt: Appointment) => void;
-  onView?: (appt: Appointment) => void;
+  onView?: (appt: Appointment, stack: Appointment[]) => void;
   onDelete: (id: string) => void;
   userRole?: string;
   users?: User[];
   preferredDialer?: string;
   currentWindow?: EarningWindow | null; // For Cycle gamification
   payCycles?: PayCycle[]; // For filtering
+  referralRate: number;
 }
 
 export const OnboardedView: React.FC<OnboardedViewProps> = ({ 
@@ -30,7 +31,8 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
   users = [], 
   preferredDialer,
   currentWindow,
-  payCycles = []
+  payCycles = [],
+  referralRate
 }) => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedCycleId, setSelectedCycleId] = useState<string>('lifetime');
@@ -64,17 +66,15 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
 
   const handleCardClick = (appt: Appointment) => {
     if (onView) {
-      onView(appt);
+      onView(appt, filtered);
     } else {
       onEdit(appt);
     }
   };
 
-  // --- FILTER & SORT LOGIC ---
   const filtered = useMemo(() => {
     let result = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
 
-    // 1. Filter by Pay Cycle
     if (selectedCycleId !== 'lifetime') {
         const cycle = payCycles.find(c => c.id === selectedCycleId);
         if (cycle) {
@@ -87,7 +87,6 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
         }
     }
 
-    // 2. Search Query
     if (searchQuery) {
         const q = searchQuery.toLowerCase();
         result = result.filter(a => {
@@ -102,7 +101,6 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
         });
     }
 
-    // 3. Sort
     return result.sort((a, b) => {
       const dateA = new Date(a.scheduledAt).getTime();
       const dateB = new Date(b.scheduledAt).getTime();
@@ -110,20 +108,16 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
     });
   }, [appointments, searchQuery, selectedCycleId, sortOrder, payCycles, users, userRole]);
 
-  // --- GROUPING LOGIC (For Stacking) ---
   const groupedAppointments = useMemo(() => {
-      // Group by "YYYY-MM-DD"
       const groups: Record<string, Appointment[]> = {};
       
       filtered.forEach(appt => {
-          // Use scheduledAt as the grouping date (Onboard Date)
           const d = new Date(appt.scheduledAt);
-          const key = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
+          const key = d.toLocaleDateString('en-CA');
           if (!groups[key]) groups[key] = [];
           groups[key].push(appt);
       });
 
-      // Convert to array and sort groups based on sortOrder
       return Object.entries(groups).sort((a, b) => {
           const dateA = new Date(a[0]).getTime();
           const dateB = new Date(b[0]).getTime();
@@ -131,11 +125,9 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
       });
   }, [filtered, sortOrder]);
 
-  // Gamification Logic
   useEffect(() => {
     if (userRole === 'admin' || !currentWindow) return;
 
-    // Check for Cycle Level 13
     const seenCycleKey13 = `chicayo_game_seen_level13_${currentWindow.id}`;
     const seenLevel13 = localStorage.getItem(seenCycleKey13);
     
@@ -144,7 +136,6 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
        return; 
     }
 
-    // Check for Cycle Level 21
     const seenCycleKey21 = `chicayo_game_seen_level21_${currentWindow.id}`;
     const seenLevel21 = localStorage.getItem(seenCycleKey21);
     
@@ -164,28 +155,20 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
      setActivePopup(null);
   };
 
-  // Build Cycle Options for Dropdown (Past/Ended Cycles Only)
   const cycleOptions = useMemo(() => {
       if (payCycles.length === 0) return [];
-      
       const now = new Date().getTime();
-      // Only include cycles that have ended (end date is in the past)
       const endedCycles = payCycles.filter(c => {
           const cycleEnd = new Date(c.endDate);
           cycleEnd.setHours(23, 59, 59, 999);
           return cycleEnd.getTime() < now;
       });
-
       const sortedCycles = [...endedCycles].sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
-      // Take up to 5 most recent ended cycles
       const relevant = sortedCycles.slice(0, 5);
-      
       const options = relevant.map(c => ({
           value: c.id,
           label: `${formatDate(c.startDate)} - ${formatDate(c.endDate)}`
       }));
-
-      // Always include Lifetime view. If options is empty (no ended cycles), dropdown will hide due to length check > 1
       return [{ value: 'lifetime', label: 'Lifetime View' }, ...options];
   }, [payCycles]);
 
@@ -196,12 +179,22 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
     const aeColorClass = appt.aeName ? (AE_COLORS[appt.aeName] || 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300') : 'bg-slate-100 text-slate-600';
     const agentColorClass = userRole === 'admin' && agent ? getAgentColor(agent.id) : '';
 
+    // Fix: Corrected 'appointment' to 'appt' to resolve 'Cannot find name appointment' errors
+    const isRecentReferral = appt.lastReferralAt && (Date.now() - new Date(appt.lastReferralAt).getTime() < 48 * 60 * 60 * 1000);
+    const totalPayout = (appt.earnedAmount || 0) + ((appt.referralCount || 0) * referralRate);
+
     return (
         <div 
             onClick={() => handleCardClick(appt)}
-            className={`group relative bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-lg shadow-slate-200/50 dark:shadow-none border-2 transition-all duration-300 hover:-translate-y-1 overflow-hidden cursor-pointer w-full ${userRole === 'admin' ? 'border-transparent hover:border-slate-300 dark:hover:border-slate-600' : 'border-transparent hover:border-indigo-500 dark:hover:border-indigo-500'}`}
+            className={`group relative bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-lg shadow-slate-200/50 dark:shadow-none border-2 transition-all duration-300 hover:-translate-y-1 overflow-hidden cursor-pointer w-full ${isRecentReferral ? 'border-rose-400 dark:border-rose-800' : 'border-transparent hover:border-indigo-500 dark:hover:border-indigo-500'}`}
         >
             <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl transition-all ${isSelfOwned ? 'bg-amber-500/20 group-hover:bg-amber-500/30' : 'bg-indigo-500/10 group-hover:bg-indigo-500/20'}`}></div>
+
+            {isRecentReferral && (
+                <div className="absolute top-0 right-0 px-3 py-1 bg-rose-600 text-white text-[8px] font-black uppercase tracking-widest z-20 rounded-bl-xl shadow-lg">
+                    New Referral Activity
+                </div>
+            )}
 
             {userRole === 'admin' && agent && (
                 <div className={`absolute top-0 left-0 right-0 h-1.5 ${agentColorClass.split(' ')[0]}`}></div>
@@ -212,7 +205,7 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                     {isSelfOwned ? <IconSparkles className="w-6 h-6" /> : <IconTrophy className="w-6 h-6" />}
                 </div>
                 <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-3 py-1 rounded-full text-sm font-bold shadow-sm">
-                    {appt.earnedAmount ? formatCurrency(appt.earnedAmount) : '+$2.00'}
+                    {formatCurrency(totalPayout)}
                 </div>
             </div>
 
@@ -291,6 +284,16 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                 </div>
             </div>
 
+            {appt.referralCount ? (
+                <div className="px-3 py-2 mb-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/30 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <IconSparkles className="w-3.5 h-3.5 text-rose-500" />
+                        <span className="text-[10px] font-black text-rose-700 dark:text-rose-300 uppercase tracking-tighter">Referral Multiplier</span>
+                    </div>
+                    <span className="text-xs font-black text-rose-600 dark:text-rose-400">+{appt.referralCount}</span>
+                </div>
+            ) : null}
+
             <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700/50">
                 <div className="flex gap-2">
                     <span className="text-[10px] font-bold px-2 py-1 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300 rounded border border-indigo-100 dark:border-indigo-800">
@@ -323,7 +326,6 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
   return (
     <div className="space-y-6 pb-20">
       
-      {/* LEVEL 13 POPUP */}
       {activePopup === 'level13' && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in zoom-in duration-500">
            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white p-8 rounded-3xl shadow-2xl max-w-sm text-center relative overflow-hidden">
@@ -345,7 +347,6 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
         </div>
       )}
 
-      {/* LEVEL 21 CYCLE POPUP */}
       {activePopup === 'level21' && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in zoom-in duration-500">
            <div className="bg-gradient-to-br from-emerald-600 to-teal-800 text-white p-8 rounded-3xl shadow-2xl max-w-sm text-center relative overflow-hidden">
@@ -381,7 +382,6 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
         </h2>
         
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-            {/* Cycle Filter Dropdown (Only if previous cycles exist) */}
             {cycleOptions.length > 1 && (
                 <div className="w-full sm:w-48">
                     <CustomSelect 
@@ -414,11 +414,7 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-start">
           {groupedAppointments.map(([dateKey, items]) => {
-              // Convert dateKey (YYYY-MM-DD) to Display Format (Fri, Oct 24, 2025)
-              // Note: using 'UTC' logic or local logic should align with CustomDatePicker output
-              // dateKey is 'YYYY-MM-DD'. Creating a new Date(dateKey) sets it to UTC midnight.
-              // To display correctly in user local time relative to input, we treat YYYY-MM-DD as simple string formatting
-              const dateObj = new Date(dateKey + 'T00:00:00'); // Force local interpretation
+              const dateObj = new Date(dateKey + 'T00:00:00');
               const displayDate = dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 
               return (
@@ -436,7 +432,7 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                       <CardStack<Appointment> 
                           items={items}
                           renderItem={renderTrophyCard}
-                          threshold={1} // Stack only if more than 1 item (2+)
+                          threshold={1} 
                       />
                   </div>
               );

@@ -10,7 +10,7 @@ export enum AppointmentStage {
 
 export type View = 'dashboard' | 'calendar' | 'onboarded' | 'earnings-full' | 'admin-dashboard' | 'profile' | 'user-analytics';
 export type UserRole = 'agent' | 'admin';
-export type AdminView = 'overview' | 'analytics' | 'cycles' | 'audit';
+export type AdminView = 'overview' | 'deepdive' | 'cycles' | 'auditlog';
 export type AvatarId = 'initial' | 'robot' | 'alien' | 'ghost' | 'fire' | 'zap' | 'crown' | 'star' | 'smile';
 
 export const ACCOUNT_EXECUTIVES = ['Joshua', 'Jorge', 'Andrew'];
@@ -25,6 +25,7 @@ export interface GlobalSettings {
   id: string;
   commission_standard: number;
   commission_self: number;
+  commission_referral: number;
   updated_at: string;
 }
 
@@ -46,48 +47,18 @@ export interface User {
   dismissedCycleIds?: string[];
 }
 
-export type IncentiveRuleType = 'one_time' | 'per_deal' | 'challenge' | 'up_for_grabs';
-
-export interface IncentiveRule {
-  id: string;
-  userId: string | 'team';
-  type: IncentiveRuleType;
-  valueCents: number;
-  label: string;
-  startTime?: string;
-  endTime?: string;
-  targetCount?: number;
-  currentCount?: number;
-  isActive: boolean;
-  createdAt: string;
-}
-
-export interface Incentive {
-  id: string;
-  userId: string | 'team';
-  amountCents: number;
-  label: string;
-  createdAt: string;
-  appliedCycleId: string;
-  ruleId?: string; // Links back to the rule that created it
-}
-
-export interface TeamMember {
-  id: string;
-  name: string;
-  role: UserRole;
-  status: 'Online' | 'Offline' | 'Busy';
-  onboardedCount: number;
-  totalEarnings: number;
-  lastActive: string;
-  avatarId?: AvatarId;
-}
-
 export interface PayCycle {
   id: string;
   startDate: string;
   endDate: string;
   status: 'active' | 'upcoming' | 'completed';
+}
+
+export interface ReferralHistoryEntry {
+  id: string;
+  date: string;
+  count: number;
+  incentiveId: string;
 }
 
 export interface Appointment {
@@ -103,6 +74,33 @@ export interface Appointment {
   earnedAmount?: number;
   type?: 'appointment' | 'transfer';
   aeName?: string;
+  referralCount?: number;
+  lastReferralAt?: string;
+  referralHistory?: ReferralHistoryEntry[];
+}
+
+export interface Incentive {
+  id: string;
+  userId: string;
+  amountCents: number;
+  label: string;
+  appliedCycleId?: string;
+  createdAt: string;
+  ruleId?: string;
+}
+
+export interface IncentiveRule {
+  id: string;
+  userId: string;
+  type: 'one_time' | 'per_deal' | 'up_for_grabs';
+  valueCents: number;
+  label: string;
+  startTime?: string;
+  endTime?: string;
+  targetCount?: number;
+  currentCount?: number;
+  isActive: boolean;
+  createdAt: string;
 }
 
 export interface EarningWindow {
@@ -116,14 +114,24 @@ export interface EarningWindow {
   incentives?: Incentive[];
 }
 
+export interface TeamMember {
+  id: string;
+  name: string;
+  role: UserRole;
+  status: string;
+  onboardedCount: number;
+  totalEarnings: number;
+  lastActive: string;
+  avatarId?: AvatarId;
+}
+
 export interface ActivityLog {
   id: string;
   userId: string;
   userName: string;
-  action: 'create' | 'update' | 'delete' | 'move_stage' | 'login' | 'commission_change';
+  action: string;
   details: string;
   timestamp: string;
-  relatedId?: string;
 }
 
 export interface DashboardStats {
@@ -133,12 +141,6 @@ export interface DashboardStats {
   totalFailed: number;
   totalRescheduled: number;
   conversionRate: string;
-  totalTransfers: number;
-  transfersOnboarded: number;
-  transfersDeclined: number;
-  transferConversionRate: string;
-  appointmentsTransferred: number;
-  apptTransferConversionRate: string;
   aePerformance: Record<string, number>;
 }
 
