@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { IconBot, IconSend, IconX, IconCopy, IconCheck, IconExternalLink, IconArrowRight, IconSparkles } from './Icons';
 import { Appointment, EarningWindow, PayCycle, User, View, AppointmentStage } from '../types';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { formatCurrency } from '../utils/dateUtils';
 
 interface TaxterChatProps {
@@ -181,7 +181,7 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     setIsTyping(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
       const systemPrompt = `You are Taxter, the accounting AI for ChiCayo Tax.
         GOAL: Provide instant, data-driven answers using the JSON context provided below.
         CRITICAL ACCURACY: Use data in 'meta.activeCycle'. Use 'meta.activeRules' for any logic about what a deal is currently worth ($${(commissionRate / 100)} standard, $${(selfCommissionRate / 100)} self).
@@ -191,13 +191,16 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
         - Be concise and professional.
         DATA: ${prepareContextData()}`;
 
-      const response = await ai.models.generateContent({
+      const model = genAI.getGenerativeModel({
         model: 'gemini-1.5-flash',
-        contents: text,
-        config: { systemInstruction: systemPrompt },
+        systemInstruction: systemPrompt,
       });
 
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: response.text || "I was unable to calculate that right now." }]);
+      const result = await model.generateContent(text);
+      const response = result.response;
+      const responseText = response.text();
+
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: responseText || "I was unable to calculate that right now." }]);
     } catch (e) {
       console.error("AI Error:", e);
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: "I'm having trouble reaching my processing center. Please ensure your API Key is valid." }]);
