@@ -181,7 +181,7 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     setIsTyping(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
       const systemPrompt = `You are Taxter, the accounting AI for ChiCayo Tax.
         GOAL: Provide instant, data-driven answers using the JSON context provided below.
         CRITICAL ACCURACY: Use data in 'meta.activeCycle'. Use 'meta.activeRules' for any logic about what a deal is currently worth ($${(commissionRate / 100)} standard, $${(selfCommissionRate / 100)} self).
