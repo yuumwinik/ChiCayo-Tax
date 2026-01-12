@@ -9,7 +9,8 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       host: '0.0.0.0',
     },
-    base: './',
+    // Only use relative base for Electron (production mode), otherwise default to '/' for Vercel
+    base: mode === 'production' && process.env.npm_lifecycle_event !== 'build' ? './' : '/',
     plugins: [react()],
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
