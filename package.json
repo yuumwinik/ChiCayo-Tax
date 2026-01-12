@@ -1,6 +1,6 @@
 {
   "name": "chicayo-tax",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ChiCayo Tax Appointment Tracker",
   "main": "electron.js",
   "scripts": {

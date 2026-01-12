@@ -291,6 +291,7 @@ export default function App() {
             <AESelectionModal isOpen={isAEModalOpen} onClose={() => setIsAEModalOpen(false)} agentName={user.name} onConfirm={ae => { if (pendingMove) { handleMoveStageContext(pendingMove.id, pendingMove.stage, false).then(() => { supabase.from('appointments').update({ ae_name: ae }).eq('id', pendingMove.id).then(() => { setPendingMove(null); refreshData(); }); }); } }} />
             <EarningsPanel isOpen={isEarningsPanelOpen} onClose={() => setIsEarningsPanelOpen(false)} onViewAll={() => { setIsEarningsPanelOpen(false); setCurrentView('earnings-full'); }} currentWindow={displayEarnings.current} history={displayEarnings.history} lifetimeEarnings={displayEarnings.lifetime} teamEarnings={isAdmin ? displayEarnings.lifetime : undefined} teamCurrentPool={isAdmin ? teamCurrentCycleTotal : undefined} isTeamView={isAdmin} referralRate={referralCommissionRate} allAppointments={allAppointments} />
             <TaxterChat user={user} allAppointments={allAppointments} allEarnings={displayEarnings.history} payCycles={payCycles} allUsers={allUsers} onNavigate={setCurrentView} activeCycle={activeCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} />
+            <div className="fixed bottom-1 right-1 text-[10px] text-slate-300 dark:text-slate-700 opacity-50 z-[9999] pointer-events-none font-mono">v1.0.1</div>
         </div>
     );
 }
