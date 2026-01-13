@@ -80,7 +80,7 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
       const totalReferrals = personalOnboarded.reduce((sum, a) => sum + (a.referralCount || 0), 0);
       const personalReferralRevenue = totalReferrals * referralRate;
 
-      const personalProdRevenue = personalOnboarded.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0) + personalReferralRevenue;
+      const personalProdRevenue = personalOnboarded.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
 
       const personalBonusRevenue = allIncentives.filter(i => {
          if (i.userId !== currentUser.id && i.userId !== 'team') return false;
@@ -93,8 +93,7 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
 
       const teamTotalPool = teamOnboarded.reduce((sum, a) => {
          const base = Number(a.earnedAmount) || 0;
-         const refs = (a.referralCount || 0) * referralRate;
-         return sum + base + refs;
+         return sum + base;
       }, 0) + allIncentives.filter(i => {
          if (scopeType === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
          if (scopeType === 'history' && i.appliedCycleId !== selectedScopeId) return false;

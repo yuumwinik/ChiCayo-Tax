@@ -371,8 +371,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const lifetime = onboardedOnly.reduce((s, a) => {
             const base = a.earnedAmount || 0;
-            const refs = (a.referralCount || 0) * referralCommissionRate;
-            return s + base + refs;
+            // Referral commissions are now handled via Incentives to ensure correct Cycle attribution
+            return s + base;
         }, 0) + relevantIncentives.reduce((s, i) => s + i.amountCents, 0);
 
         const now = Date.now();
@@ -388,8 +388,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             const cycleProdTotal = cycleAppts.reduce((s, a) => {
                 const base = a.earnedAmount || 0;
-                const refs = (a.referralCount || 0) * referralCommissionRate;
-                return s + base + refs;
+                // Referral commissions are in cycleIncentives
+                return s + base;
             }, 0);
 
             acc.push({
@@ -415,9 +415,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .filter(a => a.stage === AppointmentStage.ONBOARDED && new Date(a.scheduledAt).getTime() >= start && new Date(a.scheduledAt).getTime() <= end)
             .reduce((sum, a) => {
                 const base = a.earnedAmount || 0;
-                const referrals = (a.referralCount || 0) * referralCommissionRate;
-                return sum + base + referrals;
-            }, 0);
+                // Referral commissions are now Incentives
+                return sum + base;
+            }, 0) + allIncentives.filter(i => i.appliedCycleId === activeCycle.id).reduce((s, i) => s + i.amountCents, 0);
     }, [allAppointments, activeCycle, referralCommissionRate]);
 
     return (
