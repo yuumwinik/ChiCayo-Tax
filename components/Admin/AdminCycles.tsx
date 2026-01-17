@@ -27,7 +27,7 @@ interface AdminCyclesProps {
 
 export const AdminCycles: React.FC<AdminCyclesProps> = ({
     cycles, onAddCycle, onEditCycle, onDeleteCycle,
-    commissionRate = 200, selfCommissionRate = 300, referralRate = 500,
+    commissionRate = 200, selfCommissionRate = 300, referralRate = 200,
     onUpdateMasterCommissions,
     onImportReferrals,
     appointments = [],
@@ -40,7 +40,7 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
     const [isLocked, setIsLocked] = useState(true);
     const [tempStd, setTempStd] = useState((commissionRate / 100).toString());
     const [tempSelf, setTempSelf] = useState((selfCommissionRate / 100).toString());
-    const [tempReferral, setTempReferral] = useState("2");
+    const [tempReferral, setTempReferral] = useState((referralRate / 100).toString());
     const [syncRetroactive, setSyncRetroactive] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
 

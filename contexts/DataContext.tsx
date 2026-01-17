@@ -109,7 +109,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (settings) {
                 setCommissionRate(settings.commission_standard);
                 setSelfCommissionRate(settings.commission_self);
-                setReferralCommissionRate(settings.commission_referral || 500);
+                setReferralCommissionRate(settings.commission_referral || 200);
             }
         } catch (e) {
             console.error("Data fetch error:", e);
@@ -266,7 +266,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await Promise.all([
             supabase.from('appointments').update({
                 referral_count: newCount,
-                referral_history: updatedHistory
+                referral_history: updatedHistory,
+                last_referral_at: newCount === 0 ? null : appt.lastReferralAt // Clear indicator if no referrals left
             }).eq('id', clientId),
             supabase.from('incentives').delete().eq('id', entry.incentiveId)
         ]);
