@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { TeamMember, DashboardStats, Appointment, PayCycle, AppointmentStage, User, AE_COLORS, ACCOUNT_EXECUTIVES } from '../../types';
-import { IconTrendingUp, IconTransfer, IconBriefcase, IconCheck, IconX, IconCalendar, IconFilter, IconActivity, IconTrophy, IconChartBar, IconSparkles, IconDownload, IconUsers, IconDollarSign, IconChevronLeft, IconChevronRight } from '../Icons';
+import { IconTrendingUp, IconTransfer, IconBriefcase, IconCheck, IconX, IconCalendar, IconFilter, IconActivity, IconTrophy, IconChartBar, IconSparkles, IconDownload, IconUsers, IconDollarSign, IconChevronLeft, IconChevronRight, IconZap, IconAlertTriangle, IconStar, IconClock } from '../Icons';
 import { CustomSelect } from '../CustomSelect';
 import { formatDate, formatCurrency } from '../../utils/dateUtils';
+import { calculatePeakTime, detectAnomalies } from '../../utils/analyticsUtils';
 
 interface AdminAnalyticsProps {
    members: TeamMember[];
@@ -217,8 +218,22 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
       }
    ];
 
+   const teamPeak = calculatePeakTime(appointments);
+   const anomalies = detectAnomalies(appointments);
+
    return (
       <div className="space-y-8 animate-in fade-in duration-500 pb-20">
+         {anomalies.length > 0 && (
+            <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-800 rounded-3xl p-4 flex gap-3 animate-in fade-in duration-500">
+               <div className="p-2 bg-rose-100 dark:bg-rose-900/50 text-rose-600 rounded-xl shrink-0"><IconAlertTriangle className="w-5 h-5" /></div>
+               <div>
+                  <h4 className="text-sm font-black text-rose-900 dark:text-rose-100 uppercase tracking-widest mb-1">AI Anomaly Detection</h4>
+                  <ul className="text-xs font-bold text-rose-700 dark:text-rose-300 space-y-1">
+                     {anomalies.map((a, i) => <li key={i}>• {a}</li>)}
+                  </ul>
+               </div>
+            </div>
+         )}
          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white dark:bg-slate-800 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-700 shadow-sm">
             <div className="flex items-center gap-3">
                <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-200 dark:shadow-none"><IconActivity className="w-6 h-6" /></div>
@@ -233,7 +248,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
             </div>
          </div>
 
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden group">
                <div className="relative z-10">
                   <div className="flex items-center gap-2 mb-2 text-emerald-100 font-black uppercase tracking-widest text-[10px]"><IconSparkles className="w-4 h-4" /> Self-Onboard Revenue</div>
@@ -266,6 +281,17 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
                   </div>
                </div>
                <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000"></div>
+            </div>
+            <div className="bg-indigo-600 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden group">
+               <div className="relative z-10">
+                  <div className="flex items-center gap-2 mb-2 text-indigo-100 font-black uppercase tracking-widest text-[10px]"><IconActivity className="w-4 h-4" /> Team Peak Activity</div>
+                  <div className="text-4xl font-black mb-4">{teamPeak.label}</div>
+                  <div className="flex items-center justify-between text-xs font-bold bg-white/20 p-3 rounded-2xl backdrop-blur-md">
+                     <span>Most High-Value Hour</span>
+                     <span className="text-indigo-100">AI Tracked</span>
+                  </div>
+               </div>
+               <div className="absolute top-0 right-0 p-4 text-white/10 group-hover:rotate-12 transition-transform"><IconClock className="w-12 h-12" /></div>
             </div>
          </div>
 

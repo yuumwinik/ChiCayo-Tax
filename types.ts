@@ -10,7 +10,7 @@ export enum AppointmentStage {
 
 export type View = 'dashboard' | 'calendar' | 'onboarded' | 'earnings-full' | 'admin-dashboard' | 'profile' | 'user-analytics';
 export type UserRole = 'agent' | 'admin';
-export type AdminView = 'overview' | 'deepdive' | 'cycles' | 'auditlog';
+export type AdminView = 'overview' | 'deepdive' | 'cycles' | 'auditlog' | 'referral-wins';
 export type AvatarId = 'initial' | 'robot' | 'alien' | 'ghost' | 'fire' | 'zap' | 'crown' | 'star' | 'smile';
 
 export const ACCOUNT_EXECUTIVES = ['Joshua', 'Jorge', 'Andrew'];
@@ -77,6 +77,7 @@ export interface Appointment {
   referralCount?: number;
   lastReferralAt?: string;
   referralHistory?: ReferralHistoryEntry[];
+  nurtureDate?: string;
 }
 
 export interface Incentive {
@@ -87,6 +88,7 @@ export interface Incentive {
   appliedCycleId?: string;
   createdAt: string;
   ruleId?: string;
+  relatedAppointmentId?: string;
 }
 
 export interface IncentiveRule {

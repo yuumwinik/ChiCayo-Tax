@@ -15,11 +15,16 @@ import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 import { TaxterChat } from './components/TaxterChat';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { UserAnalytics } from './components/UserAnalytics';
-import { IconMenu, IconMoon, IconPlus, IconSearch, IconSun, getAvatarIcon, IconTrash, IconTrophy, IconSparkles, IconTransfer, IconActivity, IconX, IconCheck } from './components/Icons';
+import { IconMenu, IconMoon, IconPlus, IconSearch, IconSun, getAvatarIcon, IconTrash, IconTrophy, IconSparkles, IconTransfer, IconActivity, IconX, IconCheck, IconClock } from './components/Icons';
+import { NotificationPods } from './components/NotificationPods';
+import { calculatePeakTime } from './utils/analyticsUtils';
 import { generateId, formatDate, formatCurrency } from './utils/dateUtils';
 import { CreateModal } from './components/CreateModal';
 import { AESelectionModal } from './components/AESelectionModal';
 import { BusinessCardModal } from './components/BusinessCardModal';
+import { WeeklyRecapModal } from './components/WeeklyRecapModal';
+import { CelebrationOverlay } from './components/CelebrationOverlay';
+import { ReferralMomentumWidget } from './components/ReferralMomentumWidget';
 import { supabase } from './utils/supabase';
 import { CardStack } from './components/CardStack';
 import { GlobalWinTicker } from './components/GlobalWinTicker';
@@ -85,6 +90,13 @@ export default function App() {
         return saved ? new Set(JSON.parse(saved)) : new Set();
     });
 
+    const [activeCelebration, setActiveCelebration] = useState<any>(null);
+    const [isWeeklyRecapOpen, setIsWeeklyRecapOpen] = useState(false);
+    const [achievements, setAchievements] = useState<Set<string>>(() => {
+        const saved = localStorage.getItem('achievements_v1');
+        return saved ? new Set(JSON.parse(saved)) : new Set();
+    });
+
     useEffect(() => {
         const savedTheme = localStorage.getItem(KEYS.THEME);
         if (savedTheme) setDarkMode(JSON.parse(savedTheme));
@@ -123,6 +135,64 @@ export default function App() {
             });
         }
     }, [allAppointments, user, referralCommissionRate, seenReferralIds]);
+
+    // --- MILESTONES & FRIDAY RECAP LOGIC ---
+    useEffect(() => {
+        if (!user || user.role === 'admin') return;
+
+        const checkMilestones = () => {
+            const onboarded = allAppointments.filter(a => a.userId === user.id && a.stage === AppointmentStage.ONBOARDED);
+            const selfOnboarded = onboarded.filter(a => !a.aeName || a.aeName === user.name);
+            const lifetimeCents = displayEarnings.lifetime;
+            const currentCents = displayEarnings.current?.totalCents || 0;
+
+            const newAchievements = new Set(achievements);
+            let triggered: any = null;
+
+            if (onboarded.length >= 100 && !achievements.has('100_ONBOARDS')) {
+                triggered = '100_ONBOARDS';
+            } else if (selfOnboarded.length >= 100 && !achievements.has('100_SELF')) {
+                triggered = '100_SELF';
+            } else if (lifetimeCents >= 50000 && !achievements.has('500_EARNINGS')) {
+                triggered = '500_EARNINGS';
+            } else if (currentCents >= 10000 && !achievements.has('100_SINGLE_CYCLE')) {
+                triggered = '100_SINGLE_CYCLE';
+            }
+
+            // Streak check (5 in 1 hour)
+            const oneHourAgo = Date.now() - (60 * 60 * 1000);
+            const recentSelf = selfOnboarded.filter(a => new Date(a.scheduledAt).getTime() > oneHourAgo);
+            if (recentSelf.length >= 5 && !achievements.has('STREAK_5_HOUR')) {
+                triggered = 'STREAK_5_HOUR';
+            }
+
+            if (triggered) {
+                newAchievements.add(triggered);
+                setAchievements(newAchievements);
+                localStorage.setItem('achievements_v1', JSON.stringify([...newAchievements]));
+                setActiveCelebration(triggered);
+            }
+        };
+
+        const checkFridayRecap = () => {
+            const now = new Date();
+            const isFriday = now.getDay() === 5;
+            const isRecapTime = now.getHours() === 16 && now.getMinutes() >= 45;
+
+            if (isFriday && isRecapTime) {
+                const weekKey = `${now.getFullYear()}-W${Math.ceil(now.getDate() / 7)}`;
+                const lastRecap = localStorage.getItem('last_recap_week');
+                if (lastRecap !== weekKey) {
+                    setIsWeeklyRecapOpen(true);
+                    localStorage.setItem('last_recap_week', weekKey);
+                }
+            }
+        };
+
+        checkMilestones();
+        const interval = setInterval(checkFridayRecap, 30000); // Check every 30s
+        return () => clearInterval(interval);
+    }, [allAppointments, displayEarnings, user, achievements]);
 
     const handleDismissReferral = () => {
         if (referralAlert) {
@@ -167,9 +237,44 @@ export default function App() {
         setViewingAppt(activeStack[nextIndex]);
     };
 
+    const handleExportCycleLedger = () => {
+        if (!activeCycle) return;
+        const onboarded = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)).filter(a => {
+            const start = new Date(activeCycle.startDate).getTime();
+            const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
+            const scheduled = new Date(a.scheduledAt).getTime();
+            return a.stage === AppointmentStage.ONBOARDED && scheduled >= start && scheduled <= end;
+        });
+
+        const headers = ["ID", "Onboard Date", "Client", "Phone", "Closer", "Type", "Referrals", "Payout", "Notes"];
+        const rows = onboarded.map(a => {
+            const isSelf = !a.aeName || a.aeName === user?.name;
+            const payout = (a.earnedAmount || 0) + (a.referralCount || 0) * referralCommissionRate;
+            return [
+                a.id,
+                formatDate(a.scheduledAt),
+                a.name,
+                a.phone,
+                a.aeName || 'Self',
+                isSelf ? 'Self' : 'Transfer',
+                a.referralCount || 0,
+                (payout / 100).toFixed(2),
+                (a.notes || "").replace(/,/g, ";")
+            ].join(",");
+        });
+
+        const csv = [headers.join(","), ...rows].join("\n");
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `cycle_ledger_${user?.name.replace(/\s+/g, '_')}_${formatDate(activeCycle.startDate).split(',')[0]}.csv`;
+        link.click();
+    };
+
     if (!user) return <AuthScreen onLogin={async (u) => { setUser(u); refreshData(); }} />;
     return (
-        <div className="h-screen flex bg-slate-50 dark:bg-slate-950 overflow-hidden">
+        <div className="h-screen flex bg-slate-50 dark:bg-slate-950 overflow-hidden app-container">
             {referralAlert && (
                 <div className="fixed inset-0 z-[300] flex items-center justify-center bg-indigo-950/80 backdrop-blur-md animate-in fade-in duration-500 p-6">
                     <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-12 text-center max-w-sm shadow-2xl relative overflow-hidden group">
@@ -187,7 +292,7 @@ export default function App() {
                                 <p className="text-4xl font-black text-emerald-600 tabular-nums">{formatCurrency(referralAlert.totalCents)}</p>
                             </div>
                             <button
-                                onClick={() => setReferralAlert(null)}
+                                onClick={handleDismissReferral}
                                 className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl transition-all active:scale-95 uppercase tracking-widest text-sm"
                             >
                                 Sweet! Back to Work
@@ -221,6 +326,7 @@ export default function App() {
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
+                        <NotificationPods appointments={allAppointments} onOpenAppointment={(id) => { const a = allAppointments.find(x => x.id === id); if (a) handleOpenBusinessCard(a); }} thresholdMinutes={user.notificationSettings?.thresholdMinutes || 15} />
                         <button onClick={() => setDarkMode(!darkMode)} className="p-2 text-slate-500">{darkMode ? <IconSun /> : <IconMoon />}</button>
                         <div id="wallet-pill" className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-3 py-1.5 rounded-full text-sm font-bold cursor-pointer hover:scale-105 transition-transform" onClick={() => setIsEarningsPanelOpen(true)}>${(displayEarnings.lifetime / 100).toLocaleString()}</div>
                         <button onClick={() => { setCurrentView('profile'); sessionStorage.setItem(KEYS.LAST_VIEW, 'profile'); }} className="w-8 h-8 rounded-full border-2 border-white dark:border-slate-800 overflow-hidden">{user.avatarId && user.avatarId !== 'initial' ? <div className="bg-indigo-50 dark:bg-indigo-900/50">{getAvatarIcon(user.avatarId)}</div> : <div className="bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs h-full">{user.name.charAt(0).toUpperCase()}</div>}</button>
@@ -242,8 +348,17 @@ export default function App() {
                                     {isAdmin ? 'Log Onboarded Partner' : 'New Appointment'}
                                 </button>
                             </div>
+
+                            <ReferralMomentumWidget
+                                appointments={allAppointments}
+                                activeCycle={activeCycle}
+                                onViewAppt={a => handleOpenBusinessCard(a)}
+                                referralRate={referralCommissionRate}
+                                users={allUsers}
+                            />
+
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-                                {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED].map(stage => {
+                                {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, ...(showFailedSection ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
                                     const searchLower = searchQuery.toLowerCase();
                                     const items = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user.id)).filter(a => {
                                         if (a.stage !== stage) return false;
@@ -267,7 +382,7 @@ export default function App() {
                                     if (sortedItems.length === 0 && stage !== AppointmentStage.ONBOARDED) return null;
                                     return (
                                         <div key={stage} className="flex flex-col gap-4 animate-in fade-in" onDragOver={e => e.preventDefault()} onDrop={() => draggedId && handleMoveStage(draggedId, stage)}>
-                                            <div className="flex justify-between px-1"><h3 className="font-bold text-slate-500 uppercase text-[10px] tracking-widest">{stage === AppointmentStage.ONBOARDED ? 'Cycle Onboarded' : STAGE_LABELS[stage]}</h3><span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-bold">{sortedItems.length}</span></div>
+                                            <div className="flex justify-between px-1"><h3 className="font-bold text-slate-500 uppercase text-[10px] tracking-widest">{stage === AppointmentStage.ONBOARDED ? 'Cycle Onboarded' : stage === AppointmentStage.NO_SHOW ? 'No Show/Cancelled' : stage === AppointmentStage.DECLINED ? 'Declined' : STAGE_LABELS[stage]}</h3><span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-bold">{sortedItems.length}</span></div>
                                             {stage === AppointmentStage.TRANSFERRED && (<div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-1 animate-pulse flex items-center gap-2"><div className="p-1 bg-indigo-600 text-white rounded-lg"><IconTransfer className="w-3.5 h-3.5" /></div><span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">LIVE WAITING ONBOARD</span></div>)}
                                             {sortedItems.length === 0 && stage === AppointmentStage.ONBOARDED ? (
                                                 <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl opacity-50"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No Cycle Wins</p></div>
@@ -278,7 +393,7 @@ export default function App() {
                                     );
                                 })}
                             </div>
-                            {draggedId && (<div onDragOver={e => { e.preventDefault(); setIsOverDeleteZone(true); }} onDragLeave={() => setIsOverDeleteZone(false)} onDrop={() => { setDeleteConfirmation({ isOpen: true, id: draggedId }); setDraggedId(null); setIsOverDeleteZone(false); }} className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] transition-all duration-300 pointer-events-auto ${isOverDeleteZone ? 'scale-110' : 'scale-100 opacity-60'}`}><div className={`px-8 py-5 rounded-[2rem] flex items-center gap-3 shadow-2xl border-2 transition-all duration-300 ${isOverDeleteZone ? 'bg-rose-600 text-white border-rose-400' : 'bg-white dark:bg-slate-900 text-rose-50 border-rose-100 dark:border-rose-900/50'}`}><IconTrash className={`w-6 h-6 ${isOverDeleteZone ? 'animate-bounce' : ''}`} /><span className="font-black text-xs uppercase tracking-[0.2em]">Drop to Remove</span></div></div>)}
+                            {draggedId && (<div onDragOver={e => { e.preventDefault(); setIsOverDeleteZone(true); }} onDragLeave={() => setIsOverDeleteZone(false)} onDrop={() => { handleMoveStage(draggedId, AppointmentStage.NO_SHOW); setDraggedId(null); setIsOverDeleteZone(false); }} className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] transition-all duration-300 pointer-events-auto ${isOverDeleteZone ? 'scale-110' : 'scale-100 opacity-60'}`}><div className={`px-8 py-5 rounded-[2rem] flex items-center gap-3 shadow-2xl border-2 transition-all duration-300 ${isOverDeleteZone ? 'bg-amber-600 text-white border-amber-400' : 'bg-white dark:bg-slate-900 text-amber-600 border-amber-100 dark:border-amber-900/50'}`}><IconX className={`w-6 h-6 ${isOverDeleteZone ? 'animate-bounce' : ''}`} /><span className="font-black text-xs uppercase tracking-[0.2em]">Drop to Mark Failed</span></div></div>)}
                         </div>
                     )}
                 </main>
@@ -292,6 +407,22 @@ export default function App() {
             <AESelectionModal isOpen={isAEModalOpen} onClose={() => setIsAEModalOpen(false)} agentName={user.name} onConfirm={ae => { if (pendingMove) { handleMoveStageContext(pendingMove.id, pendingMove.stage, false).then(() => { supabase.from('appointments').update({ ae_name: ae }).eq('id', pendingMove.id).then(() => { setPendingMove(null); refreshData(); }); }); } }} />
             <EarningsPanel isOpen={isEarningsPanelOpen} onClose={() => setIsEarningsPanelOpen(false)} onViewAll={() => { setIsEarningsPanelOpen(false); setCurrentView('earnings-full'); }} currentWindow={displayEarnings.current} history={displayEarnings.history} lifetimeEarnings={displayEarnings.lifetime} teamEarnings={isAdmin ? displayEarnings.lifetime : undefined} teamCurrentPool={isAdmin ? teamCurrentCycleTotal : undefined} isTeamView={isAdmin} referralRate={referralCommissionRate} allAppointments={allAppointments} />
             <TaxterChat user={user} allAppointments={allAppointments} allEarnings={displayEarnings.history} payCycles={payCycles} allUsers={allUsers} onNavigate={setCurrentView} activeCycle={activeCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} />
+
+            <WeeklyRecapModal
+                isOpen={isWeeklyRecapOpen}
+                onClose={() => setIsWeeklyRecapOpen(false)}
+                appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user.id)}
+                user={user}
+                allUsers={allUsers}
+                onExportCSV={handleExportCycleLedger}
+            />
+            {activeCelebration && (
+                <CelebrationOverlay
+                    type={activeCelebration}
+                    onClose={() => setActiveCelebration(null)}
+                />
+            )}
+
             <div className="fixed bottom-1 right-1 text-[10px] text-slate-300 dark:text-slate-700 opacity-50 z-[9999] pointer-events-none font-mono">v1.0.2</div>
         </div>
     );

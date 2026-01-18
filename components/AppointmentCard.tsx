@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { Appointment, AppointmentStage, STAGE_COLORS, STAGE_LABELS, AvatarId } from '../types';
-import { formatDate, formatCurrency } from '../utils/dateUtils';
-import { IconEdit, IconMail, IconPhone, IconTrash, getAvatarIcon, IconCopy, IconCheck, IconTransfer, IconBriefcase, IconX, IconNotes, IconSparkles, IconClock } from './Icons';
+import { formatDate, formatCurrency, getRelativeTime } from '../utils/dateUtils';
+import { IconEdit, IconMail, IconPhone, IconTrash, getAvatarIcon, IconCopy, IconCheck, IconTransfer, IconBriefcase, IconX, IconNotes, IconSparkles, IconClock, IconAlertTriangle, IconAlertCircle } from './Icons';
 import { ProtocolModal } from './ProtocolModal';
 
 interface AppointmentCardProps {
@@ -62,16 +62,26 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
 
   const urgency = calculateUrgency();
   const totalPayout = (appointment.earnedAmount || 0) + ((appointment.referralCount || 0) * referralRate);
+  const relative = getRelativeTime(appointment.scheduledAt);
+  const isOverdue = relative.isPast && (appointment.stage === AppointmentStage.PENDING || appointment.stage === AppointmentStage.RESCHEDULED);
 
   return (
     <div
       onClick={() => onView ? onView(appointment) : onEdit(appointment)}
-      className={`bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border transition-all duration-200 group cursor-pointer relative ${isRecentReferral ? 'border-rose-300 dark:border-rose-900 ring-2 ring-rose-500/10' : 'border-slate-100 dark:border-slate-700/50 hover:border-indigo-100 dark:hover:border-indigo-900/50 hover:shadow-md'}`}
+      className={`bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border transition-all duration-200 group cursor-pointer relative ${isRecentReferral ? 'border-rose-300 dark:border-rose-900 ring-2 ring-rose-500/10' : isOverdue ? 'border-rose-200 dark:border-rose-900/50 bg-rose-50/10' : 'border-slate-100 dark:border-slate-700/50 hover:border-indigo-100 dark:hover:border-indigo-900/50 hover:shadow-md'}`}
     >
       {isRecentReferral && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 animate-in slide-in-from-bottom-1">
           <span className="flex items-center gap-1.5 px-3 py-1 bg-rose-600 text-white rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg shadow-rose-200 dark:shadow-none whitespace-nowrap">
             <IconSparkles className="w-3 h-3" /> Recent Referral
+          </span>
+        </div>
+      )}
+
+      {isOverdue && (
+        <div className="absolute -top-3 right-4 z-20 animate-in slide-in-from-top-1">
+          <span className="flex items-center gap-1 px-2 py-0.5 bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-400 rounded-lg text-[8px] font-black uppercase tracking-tighter border border-rose-200 dark:border-rose-800">
+            <IconAlertTriangle className="w-2.5 h-2.5" /> Overdue
           </span>
         </div>
       )}
@@ -90,17 +100,18 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
               <IconCopy className={`w-3 h-3 text-slate-300 absolute -right-1 top-1 transition-opacity ${copiedName ? 'opacity-0' : 'opacity-0 group-hover/name:opacity-100'}`} />
             </h3>
           </div>
-          <div className="flex gap-2 items-center">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${STAGE_COLORS[appointment.stage]}`}>
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${STAGE_COLORS[appointment.stage]}`}>
               {STAGE_LABELS[appointment.stage]}
             </span>
             {urgency && (
-              <div className="flex flex-col justify-center h-5 w-16 ml-1" title="Readiness Bar">
+              <div className="flex flex-col justify-center h-5 w-16" title="Readiness Bar">
                 <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
                   <div className={`h-full rounded-full ${urgency.colorClass} ${urgency.pulse ? 'animate-pulse' : 'transition-all duration-1000 ease-out'}`} style={{ width: `${urgency.percent}%` }} />
                 </div>
               </div>
             )}
+            <span className={`text-[9px] font-bold ${relative.isPast ? 'text-rose-500' : 'text-slate-400'} uppercase`}>{relative.label}</span>
           </div>
         </div>
 
@@ -109,7 +120,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
             <button onClick={(e) => { e.stopPropagation(); onDelete(appointment.id); }} className="text-slate-400 hover:text-rose-500 transition-colors p-2 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg z-10" title="Delete" type="button"><IconTrash className="w-4 h-4" /></button>
             <button onClick={(e) => { e.stopPropagation(); onEdit(appointment); }} className="text-slate-400 hover:text-indigo-500 transition-colors p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg z-10" title="Edit" type="button"><IconEdit className="w-4 h-4" /></button>
           </div>
-          <div className="text-[10px] text-slate-400 font-medium bg-slate-50 dark:bg-slate-900 px-2 py-1 rounded-full">{formatDate(appointment.scheduledAt)}</div>
+          <div className="text-[10px] text-slate-400 font-black uppercase tracking-tighter bg-slate-50 dark:bg-slate-900 px-2 py-1 rounded-full">{formatDate(appointment.scheduledAt)}</div>
         </div>
       </div>
 
@@ -146,7 +157,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
 
         {appointment.email && (
           <div className="flex items-center justify-between group/row">
-            <ProtocolModal type="email" value={appointment.email}>
+            <ProtocolModal type="email" value={appointment.email} templatePath={appointment.stage === AppointmentStage.ONBOARDED ? "Files/Welcome to the Community Tax – SBTPG Referral Program.oft" : undefined}>
               {(trigger) => (
                 <button onClick={(e) => { e.stopPropagation(); trigger(); }} className="flex items-center text-sm text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors truncate w-fit relative z-10 max-w-[85%]">
                   <IconMail className="w-4 h-4 mr-2 opacity-70 shrink-0" />
@@ -177,10 +188,10 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
           <div className="flex items-center justify-between w-full gap-1.5">
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.NO_SHOW); }}
-              title="Failed to Show"
-              className="w-10 h-10 flex items-center justify-center rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90"
+              title="Failed to Show (Move to No Show)"
+              className="w-10 h-10 flex items-center justify-center rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50"
             >
-              <IconX className="w-4 h-4" />
+              <IconAlertCircle className="w-4 h-4" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(appointment, true); }}

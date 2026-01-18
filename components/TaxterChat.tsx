@@ -4,6 +4,7 @@ import { IconBot, IconSend, IconX, IconCopy, IconCheck, IconExternalLink, IconAr
 import { Appointment, EarningWindow, PayCycle, User, View, AppointmentStage } from '../types';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { formatCurrency } from '../utils/dateUtils';
+import { calculateSuccessProbability, generateCoachingInsights } from '../utils/analyticsUtils';
 
 interface TaxterChatProps {
   user: User;
@@ -110,8 +111,8 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
   }, [messages, isOpen, isTyping]);
 
   const suggestions = user.role === 'admin'
-    ? ["Team revenue this cycle", "Who is the top agent?", "Show team leaderboard"]
-    : ["My total this week", "Show my trophy case", "Recent onboards"];
+    ? ["Team revenue this cycle", "Who is the top agent?", "Analyze team peak times"]
+    : ["Daily total", "Total this week", "Coaching tips", "Recent onboards"];
 
   const prepareContextData = () => {
     const relevantAppointments = user.role === 'admin' ? allAppointments : allAppointments.filter(a => a.userId === user.id);
@@ -135,12 +136,44 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       });
     }
 
+    // Historical Cycle Summary (Last 12 Cycles)
+    const history = payCycles
+      .filter(c => new Date(c.endDate).getTime() < now.getTime())
+      .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime())
+      .slice(0, 12)
+      .map(c => {
+        const cycleAppts = relevantAppointments.filter(a => {
+          const d = new Date(a.scheduledAt).getTime();
+          return d >= new Date(c.startDate).getTime() && d <= new Date(c.endDate).setHours(23, 59, 59, 999);
+        });
+        const cycleWins = cycleAppts.filter(a => a.stage === AppointmentStage.ONBOARDED);
+        const cycleRev = cycleWins.reduce((sum, a) => {
+          const agent = allUsers.find(u => u.id === a.userId);
+          const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
+          return sum + (a.earnedAmount || defaultRate) + (a.referralCount || 0) * 200;
+        }, 0);
+        return {
+          id: c.id,
+          label: `${new Date(c.startDate).toLocaleDateString()} - ${new Date(c.endDate).toLocaleDateString()}`,
+          wins: cycleWins.length,
+          revenue: formatCurrency(cycleRev),
+          revCents: cycleRev
+        };
+      });
+
     const lifetimeOnboarded = relevantAppointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
+
+    const referralData = lifetimeOnboarded.filter(a => (a.referralCount || 0) > 0).map(p => ({
+      name: p.name,
+      count: p.referralCount,
+      last: p.lastReferralAt
+    })).sort((a, b) => (b.count || 0) - (a.count || 0));
+
     const lifetimeEarnings = lifetimeOnboarded.reduce((sum, a) => {
       const agent = allUsers.find(u => u.id === a.userId);
       const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
       return sum + (a.earnedAmount || defaultRate);
-    }, 0);
+    }, 0) + lifetimeOnboarded.reduce((sum, a) => sum + (a.referralCount || 0) * (200), 0);
 
     const context = {
       meta: {
@@ -159,8 +192,10 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
         lifetime: {
           earnings: formatCurrency(lifetimeEarnings),
           onboardedCount: lifetimeOnboarded.length,
-          totalApps: relevantAppointments.length
-        }
+          totalApps: relevantAppointments.length,
+          topReferralPartners: referralData.slice(0, 3)
+        },
+        historicalPerformance: history
       },
       recentAppointments: relevantAppointments.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()).slice(0, 50).map(a => ({
         name: a.name, time: a.scheduledAt, stage: a.stage, ae: a.aeName, amt: formatCurrency(a.earnedAmount || 0)
@@ -173,23 +208,36 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     };
     return JSON.stringify(context);
   };
-
   const handleSend = async (text: string = input) => {
     if (!text.trim() || isTyping) return;
-    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text }]);
+    const userMessage: Message = { id: Date.now().toString(), role: 'user', text };
+    setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsTyping(true);
 
     try {
-      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-      const systemPrompt = `You are Taxter, the accounting AI for ChiCayo Tax.
-        GOAL: Provide instant, data-driven answers using the JSON context provided below.
-        CRITICAL ACCURACY: Use data in 'meta.activeCycle'. Use 'meta.activeRules' for any logic about what a deal is currently worth ($${(commissionRate / 100)} standard, $${(selfCommissionRate / 100)} self).
-        FORMATTING RULES:
-        - Use [[STAT:Label:Value]] for key metrics.
-        - Use [[NAV:view_id]] for navigation links ('earnings-full', 'user-analytics', 'admin-dashboard', 'onboarded', 'calendar').
-        - Be concise and professional.
-        DATA: ${prepareContextData()}`;
+      const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
+      const genAI = new GoogleGenerativeAI(apiKey);
+
+      const coaching = generateCoachingInsights(allAppointments);
+
+      const chatHistory = messages.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Taxter'}: ${m.text}`).join('\n');
+
+      const systemPrompt = `You are Taxter, the proactive performance coach and statistical AI for ChiCayo Tax.
+        GOAL: Provide instant data-driven insights and suggest high-value habits.
+        
+        CONTEXT AWARENESS:
+        - Recent Conversation: ${chatHistory}
+        - Coaching Insights: ${coaching.join(' | ')}
+        - Last 12 Cycles: ${prepareContextData()}
+
+        CAPABILITIES:
+        - Predict 'Success Probability' using peak time data. 
+        - Track daily totals and historical growth.
+        - Give habit advice like "Follow up faster on transfers" based on Coaching Insights.
+
+        FORMATTING: Use [[STAT:Label:Value]] for key metrics. Use [[NAV:View]] or [[OPEN_APPT:ID:Name]] to assist navigation.
+        STYLE: Professional, encouraging, and razor-sharp with numbers.`;
 
       const model = genAI.getGenerativeModel({
         model: 'gemini-2.0-flash',

@@ -2,8 +2,10 @@
 import React, { useState, useMemo } from 'react';
 import { Appointment, AppointmentStage, EarningWindow, PayCycle, ACCOUNT_EXECUTIVES, Incentive, TeamMember, User } from '../types';
 import { formatCurrency, formatDate } from '../utils/dateUtils';
-import { IconTrendingUp, IconBriefcase, IconTransfer, IconCheck, IconCycle, IconClock, IconChevronDown, IconActivity, IconSparkles, IconTrophy, IconChartBar, IconUsers } from './Icons';
+import { IconTrendingUp, IconBriefcase, IconTransfer, IconCheck, IconCycle, IconClock, IconChevronDown, IconActivity, IconSparkles, IconTrophy, IconChartBar, IconUsers, IconStar, IconZap } from './Icons';
 import { CustomSelect } from './CustomSelect';
+import { ReferralWinsTab } from './ReferralWinsTab';
+import { calculatePeakTime } from '../utils/analyticsUtils';
 
 interface UserAnalyticsProps {
    appointments: Appointment[];
@@ -136,6 +138,54 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                </div>
             </div>
             <div className="w-full md:w-64"><CustomSelect options={scopeOptions} value={selectedScopeId} onChange={setSelectedScopeId} /></div>
+         </div>
+
+         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-indigo-600 p-6 rounded-[2.5rem] shadow-xl shadow-indigo-200 dark:shadow-none relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 text-white/10 group-hover:text-white/20 transition-colors"><IconActivity className="w-12 h-12" /></div>
+               <p className="text-[10px] font-black text-indigo-100 uppercase tracking-widest mb-1">Peak AI Alert</p>
+               <div className="text-3xl font-black text-white">{calculatePeakTime(appointments).label}</div>
+               <p className="text-[9px] font-bold text-indigo-100/60 mt-1">Your most active power hour</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><IconZap className="w-12 h-12" /></div>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Conversion Share</p>
+               <div className="text-3xl font-black text-slate-900 dark:text-white tabular-nums">{contributionPercentage}%</div>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><IconStar className="w-12 h-12" /></div>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Lifetime Onboards</p>
+               <div className="text-3xl font-black text-slate-900 dark:text-white tabular-nums">{scopedData.onboarded}</div>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><IconClock className="w-12 h-12" /></div>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Appointments</p>
+               <div className="text-3xl font-black text-slate-900 dark:text-white tabular-nums">{scopedData.total}</div>
+            </div>
+         </div>
+
+         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-indigo-600 p-6 rounded-[2.5rem] shadow-xl shadow-indigo-200 dark:shadow-none relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 text-white/10 group-hover:text-white/20 transition-colors"><IconActivity className="w-12 h-12" /></div>
+               <p className="text-[10px] font-black text-indigo-100 uppercase tracking-widest mb-1">Peak AI Alert</p>
+               <div className="text-3xl font-black text-white">{calculatePeakTime(appointments).label}</div>
+               <p className="text-[9px] font-bold text-indigo-100/60 mt-1">Your most active power hour</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><IconZap className="w-12 h-12" /></div>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Conversion Share</p>
+               <div className="text-3xl font-black text-slate-900 dark:text-white tabular-nums">{contributionPercentage}%</div>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><IconStar className="w-12 h-12" /></div>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Lifetime Onboards</p>
+               <div className="text-3xl font-black text-slate-900 dark:text-white tabular-nums">{scopedData.onboarded}</div>
+            </div>
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><IconClock className="w-12 h-12" /></div>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Appointments</p>
+               <div className="text-3xl font-black text-slate-900 dark:text-white tabular-nums">{scopedData.total}</div>
+            </div>
          </div>
 
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -283,6 +333,18 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                   );
                })}
             </div>
+         </div>
+
+         <div className="space-y-4">
+            <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3"><IconStar className="w-6 h-6 text-rose-500" /> My Referral Insights</h3>
+            <ReferralWinsTab
+               appointments={appointments}
+               incentives={allIncentives}
+               users={[currentUser]}
+               payCycles={payCycles}
+               referralRate={referralRate}
+               currentUser={currentUser}
+            />
          </div>
       </div>
    );

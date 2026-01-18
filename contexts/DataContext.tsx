@@ -189,6 +189,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         amount_cents: bonusCents,
                         label: `Ref Bonus Delta: ${delta} Lead(s) from ${appt.name}`,
                         applied_cycle_id: activeCycle.id,
+                        related_appointment_id: appt.id,
                         created_at: now
                     });
 
@@ -236,6 +237,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 amount_cents: bonusCents,
                 label: `Manual Ref: ${delta} from ${appt.name}`,
                 applied_cycle_id: activeCycle.id,
+                related_appointment_id: appt.id,
                 created_at: now
             });
 
@@ -355,6 +357,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             return;
         }
+        if (stage === AppointmentStage.DECLINED) {
+            const nurtureDate = new Date();
+            nurtureDate.setDate(nurtureDate.getDate() + 30);
+            await supabase.from('appointments').update({ stage, earned_amount: 0, nurture_date: nurtureDate.toISOString() }).eq('id', id);
+            await refreshData();
+            return;
+        }
+
         await supabase.from('appointments').update({ stage, earned_amount: 0 }).eq('id', id); await refreshData();
     };
 

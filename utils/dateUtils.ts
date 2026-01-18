@@ -51,3 +51,20 @@ export const generateId = (): string => {
   }
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 };
+
+export const getRelativeTime = (isoString: string): { label: string, isPast: boolean } => {
+  const target = new Date(isoString).getTime();
+  const now = new Date().getTime();
+  const diffInMs = target - now;
+  const isPast = diffInMs < 0;
+  const absDiff = Math.abs(diffInMs);
+
+  const minutes = Math.floor(absDiff / (1000 * 60));
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return { label: `${days}d ${isPast ? 'ago' : 'away'}`, isPast };
+  if (hours > 0) return { label: `${hours}h ${isPast ? 'ago' : 'away'}`, isPast };
+  if (minutes > 0) return { label: `${minutes}m ${isPast ? 'ago' : 'away'}`, isPast };
+  return { label: isPast ? 'Just now' : 'Starting now', isPast };
+};
