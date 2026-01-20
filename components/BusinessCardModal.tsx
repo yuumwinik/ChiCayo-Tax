@@ -69,7 +69,7 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                 <div className={`w-full md:w-5/12 p-8 flex flex-col items-center text-center bg-slate-50 dark:bg-slate-800/30 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 transition-colors duration-500 ${isOnboarded ? 'bg-emerald-50/30 dark:bg-emerald-900/10' : ''}`}>
                     <div className="relative mb-6 flex items-center gap-4">
                         <button disabled={!hasPrev} onClick={onPrev} className={`p-2 rounded-full transition-all ${hasPrev ? 'opacity-30 hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700' : 'opacity-0'}`}><IconChevronLeft className="w-6 h-6" /></button>
-                        <div className="relative"><div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center text-3xl font-black border-4 border-white dark:border-slate-800 shadow-xl transition-all ${isOnboarded ? 'bg-emerald-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>{(appointment.name || '?').charAt(0).toUpperCase()}</div></div>
+                        <div className="relative"><div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center text-3xl font-black border-4 border-white dark:border-slate-800 shadow-xl transition-all ${isOnboarded ? 'bg-emerald-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>{(appointment.name?.trim() || '?').charAt(0).toUpperCase()}</div></div>
                         <button disabled={!hasNext} onClick={onNext} className={`p-2 rounded-full transition-all ${hasNext ? 'opacity-30 hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700' : 'opacity-0'}`}><IconChevronRight className="w-6 h-6" /></button>
                     </div>
 
@@ -123,7 +123,7 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                         </div>
                     </div>
 
-                    {isOnboarded && (
+                    {isOnboarded && ((appointment.referralCount || 0) > 0 || user?.role === 'admin') && (
                         <div className="mb-6 animate-in slide-in-from-top-2 duration-500">
                             <div className="flex items-center justify-between mb-3 px-1">
                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><IconUsers className="w-4 h-4 text-rose-500" /> Referral Ledger</h4>

@@ -134,7 +134,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
       {agentName && (
         <div className="flex items-center gap-2 mb-3 -mt-1">
           <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-400">
-            {agentAvatar && agentAvatar !== 'initial' ? <div className="w-3.5 h-3.5">{getAvatarIcon(agentAvatar)}</div> : <span className="text-[9px] font-bold">{agentName.charAt(0).toUpperCase()}</span>}
+            {agentAvatar && agentAvatar !== 'initial' ? <div className="w-3.5 h-3.5">{getAvatarIcon(agentAvatar)}</div> : <span className="text-[9px] font-bold">{(agentName?.trim() || '?').charAt(0).toUpperCase()}</span>}
           </div>
           <span className="text-xs text-slate-500 dark:text-slate-400">Agent: <span className="font-medium text-slate-700 dark:text-slate-300">{agentName}</span></span>
         </div>
