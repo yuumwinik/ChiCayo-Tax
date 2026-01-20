@@ -30,6 +30,17 @@ import { CardStack } from './components/CardStack';
 import { GlobalWinTicker } from './components/GlobalWinTicker';
 import { useUser } from './contexts/UserContext';
 import { useData } from './contexts/DataContext';
+import { ErrorBoundary } from 'react-error-boundary';
+
+const ErrorFallback = ({ error, resetErrorBoundary }: any) => {
+    return (
+        <div role="alert" className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+            <h2 className="text-lg font-bold">Something went wrong:</h2>
+            <pre className="text-sm mt-2">{error.message}</pre>
+            <button onClick={resetErrorBoundary} className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Try again</button>
+        </div>
+    );
+};
 
 const KEYS = { THEME: 'chicayo_dark_mode', LAST_VIEW: 'chicayo_last_view_v3', TICKER: 'chicayo_ticker_visible' };
 
@@ -424,9 +435,11 @@ export default function App() {
             </div>
             <CreateModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingAppt(null); }} onSubmit={handleSaveApptWrapper} isAdminMode={isAdmin} currentUserName={user.name} agentOptions={allUsers.filter(u => u.role !== 'admin')} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} />
             <AppointmentModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingAppt(null); }} onSubmit={handleSaveApptWrapper} onDelete={id => { setDeleteConfirmation({ isOpen: true, id }); setEditingAppt(null); }} initialData={editingAppt} isRescheduling={isRescheduling} agentName={user.name} isAdmin={isAdmin} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} />
-            <BusinessCardModal
-                isOpen={isBusinessCardOpen} onClose={() => { setIsBusinessCardOpen(false); setActiveStack([]); }} appointment={viewingAppt} onEdit={(a, res) => { setEditingAppt(a); setIsRescheduling(!!res); setIsModalOpen(true); }} onDelete={id => { setDeleteConfirmation({ isOpen: true, id }); setIsBusinessCardOpen(false); }} onMoveStage={(id, stage, isManual) => { handleMoveStage(id, stage, isManual); setIsBusinessCardOpen(false); }} onSaveNotes={(id, notes) => supabase.from('appointments').update({ notes }).eq('id', id).then(() => refreshData())} onNext={() => navigateStack('next')} onPrev={() => navigateStack('prev')} hasNext={activeStack.length > 1} hasPrev={activeStack.length > 1} referralRate={referralCommissionRate} onUpdateReferrals={(id, count) => handleManualReferralUpdate(id, count)}
-            />
+            <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => setIsBusinessCardOpen(false)}>
+                <BusinessCardModal
+                    isOpen={isBusinessCardOpen} onClose={() => { setIsBusinessCardOpen(false); setActiveStack([]); }} appointment={viewingAppt} onEdit={(a, res) => { setEditingAppt(a); setIsRescheduling(!!res); setIsModalOpen(true); }} onDelete={id => { setDeleteConfirmation({ isOpen: true, id }); setIsBusinessCardOpen(false); }} onMoveStage={(id, stage, isManual) => { handleMoveStage(id, stage, isManual); setIsBusinessCardOpen(false); }} onSaveNotes={(id, notes) => supabase.from('appointments').update({ notes }).eq('id', id).then(() => refreshData())} onNext={() => navigateStack('next')} onPrev={() => navigateStack('prev')} hasNext={activeStack.length > 1} hasPrev={activeStack.length > 1} referralRate={referralCommissionRate} onUpdateReferrals={(id, count) => handleManualReferralUpdate(id, count)}
+                />
+            </ErrorBoundary>
             <DeleteConfirmationModal isOpen={deleteConfirmation.isOpen} onClose={() => setDeleteConfirmation({ isOpen: false, id: null })} onConfirm={() => handleDeleteAppointment(deleteConfirmation.id!).then(() => setDeleteConfirmation({ isOpen: false, id: null }))} title="Confirm Removal" message="Permanently delete this item?" />
             <AESelectionModal isOpen={isAEModalOpen} onClose={() => setIsAEModalOpen(false)} agentName={user.name} onConfirm={ae => { if (pendingMove) { handleMoveStageContext(pendingMove.id, pendingMove.stage, false).then(() => { supabase.from('appointments').update({ ae_name: ae }).eq('id', pendingMove.id).then(() => { setPendingMove(null); refreshData(); }); }); } }} />
             <EarningsPanel isOpen={isEarningsPanelOpen} onClose={() => setIsEarningsPanelOpen(false)} onViewAll={() => { setIsEarningsPanelOpen(false); setCurrentView('earnings-full'); }} currentWindow={displayEarnings.current} history={displayEarnings.history} lifetimeEarnings={displayEarnings.lifetime} teamEarnings={isAdmin ? displayEarnings.lifetime : undefined} teamCurrentPool={isAdmin ? teamCurrentCycleTotal : undefined} isTeamView={isAdmin} referralRate={referralCommissionRate} allAppointments={allAppointments} />

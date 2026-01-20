@@ -51,26 +51,42 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const updateProfile = async (name: string, avatarId: any, notificationSettings: any, preferredDialer: string, showFailedSection?: boolean) => {
         if (!user) return;
+        console.log("🛠️ updateProfile called with:", { name, showFailedSection, current: user.showFailedSection });
 
         // Optimistic update for immediate UI feedback
-        setUser(prev => prev ? {
-            ...prev,
+        const optimisticUser = {
+            ...user,
             name,
             avatarId,
             notificationSettings,
             preferredDialer,
-            showFailedSection: showFailedSection !== undefined ? showFailedSection : prev.showFailedSection
-        } : null);
+            showFailedSection: showFailedSection !== undefined ? showFailedSection : user.showFailedSection
+        };
+        console.log("🛠️ Applying optimistic user:", optimisticUser);
+        setUser(optimisticUser);
 
-        await supabase.from('users').update({
+        const { data, error } = await supabase.from('users').update({
             name,
             avatar_id: avatarId,
             notification_settings: notificationSettings,
             preferred_dialer: preferredDialer,
             show_failed_section: showFailedSection
-        }).eq('id', user.id);
+        }).eq('id', user.id).select().single();
 
-        await refreshUser();
+        if (error) {
+            console.error("❌ updateProfile failed:", error);
+            // Revert optimistic update if needed, but for now we just log
+        } else if (data) {
+            console.log("✅ updateProfile success, DB confirmed:", data);
+            setUser({
+                ...user,
+                name: data.name,
+                avatarId: data.avatar_id,
+                notificationSettings: data.notification_settings,
+                preferredDialer: data.preferred_dialer,
+                showFailedSection: data.show_failed_section ?? true
+            });
+        }
     };
 
     useEffect(() => {

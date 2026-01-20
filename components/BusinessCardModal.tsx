@@ -35,6 +35,7 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
     const [notes, setNotes] = useState('');
     const [copiedPhone, setCopiedPhone] = useState(false);
     const [copiedName, setCopiedName] = useState(false);
+    const [copiedEmail, setCopiedEmail] = useState(false);
 
     useEffect(() => {
         if (appointment) setNotes(appointment.notes || '');
@@ -59,8 +60,6 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
         else if (type === 'name') { setCopiedName(true); setTimeout(() => setCopiedName(false), 2000); }
         else { setCopiedEmail(true); setTimeout(() => setCopiedEmail(false), 2000); }
     };
-
-    const [copiedEmail, setCopiedEmail] = useState(false);
 
     return (
         <div className="fixed inset-0 z-[500] flex items-end md:items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
