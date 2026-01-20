@@ -70,20 +70,20 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                 <div className={`w-full md:w-5/12 p-8 flex flex-col items-center text-center bg-slate-50 dark:bg-slate-800/30 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 transition-colors duration-500 ${isOnboarded ? 'bg-emerald-50/30 dark:bg-emerald-900/10' : ''}`}>
                     <div className="relative mb-6 flex items-center gap-4">
                         <button disabled={!hasPrev} onClick={onPrev} className={`p-2 rounded-full transition-all ${hasPrev ? 'opacity-30 hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700' : 'opacity-0'}`}><IconChevronLeft className="w-6 h-6" /></button>
-                        <div className="relative"><div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center text-3xl font-black border-4 border-white dark:border-slate-800 shadow-xl transition-all ${isOnboarded ? 'bg-emerald-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>{appointment.name.charAt(0).toUpperCase()}</div></div>
+                        <div className="relative"><div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center text-3xl font-black border-4 border-white dark:border-slate-800 shadow-xl transition-all ${isOnboarded ? 'bg-emerald-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>{(appointment.name || '?').charAt(0).toUpperCase()}</div></div>
                         <button disabled={!hasNext} onClick={onNext} className={`p-2 rounded-full transition-all ${hasNext ? 'opacity-30 hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700' : 'opacity-0'}`}><IconChevronRight className="w-6 h-6" /></button>
                     </div>
 
-                    <h2 onClick={() => copyToClipboard(appointment.name, 'name')} className={`text-2xl font-black mb-1 transition-colors cursor-pointer ${copiedName ? 'text-emerald-600' : 'text-slate-900 dark:text-white'}`}>{appointment.name}</h2>
+                    <h2 onClick={() => copyToClipboard(appointment.name, 'name')} className={`text-2xl font-black mb-1 transition-colors cursor-pointer ${copiedName ? 'text-emerald-600' : 'text-slate-900 dark:text-white'}`}>{appointment.name || 'Unknown User'}</h2>
                     <div className="flex flex-col items-center gap-2 mb-6">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><IconCalendar className="w-3 h-3" /> Captured {formatDate(appointment.createdAt)}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><IconCalendar className="w-3 h-3" /> Captured {formatDate(appointment.createdAt || new Date().toISOString())}</div>
                         <div className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest flex flex-col items-center gap-1 shadow-sm border ${getRelativeTime(appointment.scheduledAt).isPast && isActionable ? 'bg-rose-100 text-rose-600 border-rose-200 animate-pulse' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
                             <div className="flex items-center gap-1.5">
-                                {getRelativeTime(appointment.scheduledAt).isPast && isActionable && <IconAlertTriangle className="w-3 h-3" />}
+                                {getRelativeTime(appointment.scheduledAt || new Date().toISOString()).isPast && isActionable && <IconAlertTriangle className="w-3 h-3" />}
                                 <IconClock className="w-3.5 h-3.5 opacity-50" />
-                                {isActionable ? (getRelativeTime(appointment.scheduledAt).isPast ? `Overdue ${getRelativeTime(appointment.scheduledAt).label}` : `Due ${getRelativeTime(appointment.scheduledAt).label}`) : STAGE_LABELS[appointment.stage]}
+                                {isActionable ? (getRelativeTime(appointment.scheduledAt || new Date().toISOString()).isPast ? `Overdue ${getRelativeTime(appointment.scheduledAt || new Date().toISOString()).label}` : `Due ${getRelativeTime(appointment.scheduledAt || new Date().toISOString()).label}`) : STAGE_LABELS[appointment.stage]}
                             </div>
-                            <div className="text-[9px] opacity-60 font-bold">{formatDate(appointment.scheduledAt)}</div>
+                            <div className="text-[9px] opacity-60 font-bold">{formatDate(appointment.scheduledAt || new Date().toISOString())}</div>
                         </div>
                     </div>
 

@@ -76,7 +76,7 @@ export const ProtocolModal: React.FC<ProtocolModalProps> = ({ type, value, appNa
 
   // Using Portal to break out of stacking contexts (z-index hell)
   const modalContent = isOpen ? (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 transform transition-all scale-100 border border-slate-200 dark:border-slate-700">
 
         {/* Header */}
