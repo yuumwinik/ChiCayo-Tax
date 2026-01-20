@@ -382,9 +382,9 @@ export default function App() {
                             />
 
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-                                {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, ...(user.showFailedSection ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
+                                {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, ...((user?.showFailedSection ?? true) ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
                                     const searchLower = searchQuery.toLowerCase();
-                                    const items = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user.id)).filter(a => {
+                                    const items = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)).filter(a => {
                                         if (a.stage !== stage) return false;
                                         if (stage === AppointmentStage.ONBOARDED && activeCycle) {
                                             const start = new Date(activeCycle.startDate).getTime();

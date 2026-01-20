@@ -67,7 +67,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <div className="text-sm text-slate-500">Display "Failed" and "Declined" columns.</div>
             </div>
             <button
-              onClick={() => updateProfile(name, user.avatarId, user.notificationSettings, dialerApp, !user.showFailedSection)}
+              onClick={() => {
+                console.log("🛠️ Toggling failed section to:", !user.showFailedSection);
+                updateProfile(name, user.avatarId, user.notificationSettings, dialerApp, !user.showFailedSection);
+              }}
               className={`relative w-14 h-8 rounded-full transition-colors ${user.showFailedSection ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
             >
               <div className={`absolute top-1 left-1 bg-white w-6 h-6 rounded-full shadow-sm transition-transform ${user.showFailedSection ? 'translate-x-6' : 'translate-x-0'}`}></div>

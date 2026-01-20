@@ -51,6 +51,17 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const updateProfile = async (name: string, avatarId: any, notificationSettings: any, preferredDialer: string, showFailedSection?: boolean) => {
         if (!user) return;
+
+        // Optimistic update for immediate UI feedback
+        setUser(prev => prev ? {
+            ...prev,
+            name,
+            avatarId,
+            notificationSettings,
+            preferredDialer,
+            showFailedSection: showFailedSection !== undefined ? showFailedSection : prev.showFailedSection
+        } : null);
+
         await supabase.from('users').update({
             name,
             avatar_id: avatarId,
@@ -58,6 +69,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
             preferred_dialer: preferredDialer,
             show_failed_section: showFailedSection
         }).eq('id', user.id);
+
         await refreshUser();
     };
 
