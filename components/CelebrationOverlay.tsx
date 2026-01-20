@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { IconTrophy, IconSparkles, IconActivity } from './Icons';
+import React, { useEffect } from 'react';
+import { IconTrophy, IconSparkles, IconActivity, IconX } from './Icons';
 
 interface CelebrationOverlayProps {
     type: '100_ONBOARDS' | '100_SELF' | '500_EARNINGS' | '100_SINGLE_CYCLE' | 'STREAK_5_HOUR';
@@ -46,8 +46,8 @@ export const CelebrationOverlay: React.FC<CelebrationOverlayProps> = ({ type, on
     }, [onClose]);
 
     return (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center pointer-events-none">
-            <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-1000" />
+        <div className="fixed inset-0 z-[600] flex items-center justify-center">
+            <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-1000 cursor-pointer" onClick={onClose} />
 
             <div className="relative animate-in zoom-in slide-in-from-bottom-20 duration-1000 flex flex-col items-center">
                 {/* Simulated Confetti (Pure CSS) */}
@@ -67,7 +67,13 @@ export const CelebrationOverlay: React.FC<CelebrationOverlayProps> = ({ type, on
                 </div>
 
                 <div className={`p-1 bg-gradient-to-br ${config.color} rounded-[4rem] shadow-2xl`}>
-                    <div className="bg-white dark:bg-slate-900 rounded-[3.8rem] p-12 text-center">
+                    <div className="bg-white dark:bg-slate-900 rounded-[3.8rem] p-12 text-center relative">
+                        <button
+                            onClick={onClose}
+                            className="absolute top-8 right-8 p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                        >
+                            <IconX className="w-6 h-6" />
+                        </button>
                         <div className="mb-6 scale-125 animate-in zoom-in duration-500 delay-300">
                             {config.icon}
                         </div>

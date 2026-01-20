@@ -294,8 +294,14 @@ export default function App() {
     return (
         <div className="h-screen flex bg-slate-50 dark:bg-slate-950 overflow-hidden app-container">
             {referralAlert && (
-                <div className="fixed inset-0 z-[300] flex items-center justify-center bg-indigo-950/80 backdrop-blur-md animate-in fade-in duration-500 p-6">
-                    <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-12 text-center max-w-sm shadow-2xl relative overflow-hidden group">
+                <div
+                    className="fixed inset-0 z-[300] flex items-center justify-center bg-indigo-950/80 backdrop-blur-md animate-in fade-in duration-500 p-6 cursor-pointer"
+                    onClick={handleDismissReferral}
+                >
+                    <div
+                        className="bg-white dark:bg-slate-900 rounded-[3rem] p-12 text-center max-w-sm shadow-2xl relative overflow-hidden group cursor-default"
+                        onClick={e => e.stopPropagation()}
+                    >
                         <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-indigo-500/10 animate-pulse" />
                         <div className="relative z-10">
                             <div className="w-24 h-24 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce shadow-xl">
@@ -334,7 +340,7 @@ export default function App() {
                         onNavigate={(v) => setCurrentView(v)}
                     />
                 )}
-                <header className="h-16 flex items-center justify-between px-6 border-b bg-white/80 dark:bg-slate-950/80 backdrop-blur-md dark:border-slate-800">
+                <header className="h-16 flex items-center justify-between px-6 border-b bg-white/80 dark:bg-slate-950/80 backdrop-blur-md dark:border-slate-800 z-30 sticky top-0">
                     <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-500"><IconMenu /></button>
                     <div className="flex-1 max-w-xl mx-4">
                         <div className="relative group">
