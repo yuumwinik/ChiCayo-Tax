@@ -64,8 +64,8 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
 
       if (scopeType !== 'lifetime' && start !== null && end !== null) {
          const s = start; const e = end;
-         personalFiltered = personalFiltered.filter(a => { const d = new Date(a.scheduledAt).getTime(); return d >= s && d <= e; });
-         teamFiltered = teamFiltered.filter(a => { const d = new Date(a.scheduledAt).getTime(); return d >= s && d <= e; });
+         personalFiltered = personalFiltered.filter(a => { const d = new Date(a.onboardedAt || a.scheduledAt).getTime(); return d >= s && d <= e; });
+         teamFiltered = teamFiltered.filter(a => { const d = new Date(a.onboardedAt || a.scheduledAt).getTime(); return d >= s && d <= e; });
       }
 
       const personalOnboarded = personalFiltered.filter(a => a.stage === AppointmentStage.ONBOARDED);
@@ -311,7 +311,7 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                                     <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Onboarded Leads</h5>
                                     <div className="max-h-[150px] overflow-y-auto no-scrollbar space-y-1">
                                        {appointments.filter(a => {
-                                          const d = new Date(a.scheduledAt).getTime();
+                                          const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
                                           const winStart = new Date(win.startDate).getTime();
                                           const winEnd = new Date(win.endDate).setHours(23, 59, 59, 999);
                                           return a.stage === AppointmentStage.ONBOARDED && d >= winStart && d <= winEnd;

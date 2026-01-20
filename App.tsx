@@ -53,6 +53,7 @@ export default function App() {
         handleSaveAppointment,
         handleMoveStage: handleMoveStageContext,
         handleDeleteAppointment,
+        undoLastAction,
         displayEarnings,
         activeCycle,
         teamCurrentCycleTotal
@@ -67,7 +68,6 @@ export default function App() {
         return saved === 'true';
     });
 
-    const [showFailedSection, setShowFailedSection] = useState(true);
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [isOverDeleteZone, setIsOverDeleteZone] = useState(false);
     const [isEarningsPanelOpen, setIsEarningsPanelOpen] = useState(false);
@@ -111,8 +111,25 @@ export default function App() {
     }, [user]);
 
     useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                undoLastAction();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [undoLastAction]);
+
+    useEffect(() => {
         localStorage.setItem(KEYS.THEME, JSON.stringify(darkMode));
-        if (darkMode) document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark');
+        if (darkMode) {
+            document.documentElement.classList.add('dark');
+            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#020617');
+        } else {
+            document.documentElement.classList.remove('dark');
+            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f8fafc');
+        }
     }, [darkMode]);
 
     useEffect(() => {
@@ -161,7 +178,7 @@ export default function App() {
 
             // Streak check (5 in 1 hour)
             const oneHourAgo = Date.now() - (60 * 60 * 1000);
-            const recentSelf = selfOnboarded.filter(a => new Date(a.scheduledAt).getTime() > oneHourAgo);
+            const recentSelf = selfOnboarded.filter(a => new Date(a.onboardedAt || a.scheduledAt).getTime() > oneHourAgo);
             if (recentSelf.length >= 5 && !achievements.has('STREAK_5_HOUR')) {
                 triggered = 'STREAK_5_HOUR';
             }
@@ -240,10 +257,11 @@ export default function App() {
     const handleExportCycleLedger = () => {
         if (!activeCycle) return;
         const onboarded = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)).filter(a => {
+            if (a.stage !== AppointmentStage.ONBOARDED) return false;
             const start = new Date(activeCycle.startDate).getTime();
             const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
-            const scheduled = new Date(a.scheduledAt).getTime();
-            return a.stage === AppointmentStage.ONBOARDED && scheduled >= start && scheduled <= end;
+            const onboarded = new Date(a.onboardedAt || a.scheduledAt).getTime();
+            return onboarded >= start && onboarded <= end;
         });
 
         const headers = ["ID", "Onboard Date", "Client", "Phone", "Closer", "Type", "Referrals", "Payout", "Notes"];
@@ -252,7 +270,7 @@ export default function App() {
             const payout = (a.earnedAmount || 0) + (a.referralCount || 0) * referralCommissionRate;
             return [
                 a.id,
-                formatDate(a.scheduledAt),
+                formatDate(a.onboardedAt || a.scheduledAt),
                 a.name,
                 a.phone,
                 a.aeName || 'Self',
@@ -333,7 +351,7 @@ export default function App() {
                     </div>
                 </header>
                 <main className="flex-1 overflow-y-auto no-scrollbar relative">
-                    {loadingAuth ? <div className="h-full flex items-center justify-center"><div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div> : currentView === 'profile' ? <ProfileView totalEarnings={displayEarnings.lifetime} totalOnboarded={allAppointments.filter(a => (isAdmin ? true : a.userId === user?.id) && a.stage === AppointmentStage.ONBOARDED).length} showFailedSection={showFailedSection} onToggleFailedSection={setShowFailedSection} onReplayTutorial={() => setForceTutorial(true)} /> : currentView === 'admin-dashboard' ? <AdminDashboard members={allUsers.filter(u => u.role !== 'admin').map(u => ({ id: u.id, name: u.name, role: u.role as any, status: 'Online', onboardedCount: allAppointments.filter(a => a.userId === u.id && a.stage === AppointmentStage.ONBOARDED).length, totalEarnings: (allAppointments.filter(a => a.userId === u.id && a.stage === AppointmentStage.ONBOARDED).reduce((s, a) => s + (a.earnedAmount || 0) + ((a.referralCount || 0) * referralCommissionRate), 0)) + allIncentives.filter(i => i.userId === u.id || i.userId === 'team').reduce((s, i) => s + i.amountCents, 0), lastActive: 'Recently', avatarId: u.avatarId }))} payCycles={payCycles} onAddCycle={(s, e) => supabase.from('pay_cycles').insert({ id: generateId(), start_date: s, end_date: e, status: 'active' }).then(() => refreshData())} onEditCycle={(id, s, e) => supabase.from('pay_cycles').update({ start_date: s, end_date: e }).eq('id', id).then(() => refreshData())} onDeleteCycle={id => supabase.from('pay_cycles').delete().eq('id', id).then(() => refreshData())} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralRate={referralCommissionRate} onUpdateMasterCommissions={handleUpdateMasterCommissions} onLogOnboard={() => setIsCreateModalOpen(true)} appointments={allAppointments} activeCycle={activeCycle} activityLogs={activityLogs} onApplyIncentive={i => supabase.from('incentives').insert({ ...i, id: generateId(), created_at: new Date().toISOString() }).then(() => refreshData())} allUsers={allUsers} lifetimeTeamEarnings={displayEarnings.lifetime} incentiveRules={allIncentiveRules} onDeleteIncentiveRule={id => supabase.from('incentive_rules').delete().eq('id', id).then(() => refreshData())} allIncentives={allIncentives} onImportReferrals={handleImportReferrals} onManualReferral={handleManualReferralUpdate} onDeleteReferral={handleDeleteReferralEntry} /> : currentView === 'user-analytics' ? <div className="p-6 max-w-6xl mx-auto"><UserAnalytics appointments={allAppointments.filter(a => a.userId === user?.id)} allAppointments={allAppointments} allIncentives={allIncentives} earnings={displayEarnings} activeCycle={activeCycle} payCycles={payCycles} currentUserName={user?.name || ''} currentUser={user!} referralRate={referralCommissionRate} /></div> : currentView === 'calendar' ? <div className="p-6 max-w-6xl mx-auto"><CalendarView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, isAdmin ? allAppointments : allAppointments.filter(item => item.userId === user?.id))} userRole={user?.role || 'agent'} users={allUsers} activeCycle={activeCycle} /></div> : currentView === 'onboarded' ? <div className="p-6 max-w-6xl mx-auto"><OnboardedView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} searchQuery={searchQuery} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={(a, stack) => handleOpenBusinessCard(a, stack)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} users={allUsers} payCycles={payCycles} userRole={user?.role || 'agent'} currentWindow={displayEarnings.current} referralRate={referralCommissionRate} /></div> : currentView === 'earnings-full' ? <div className="p-6 max-w-6xl mx-auto"><EarningsFullView history={displayEarnings.history} currentWindow={displayEarnings.current} appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} users={allUsers} userRole={user?.role || 'agent'} currentUserName={user?.name || ''} onDismissCycle={id => supabase.from('users').update({ dismissed_cycle_ids: [...(user?.dismissedCycleIds || []), id] }).eq('id', user?.id).then(() => refreshData())} incentives={allIncentives} referralRate={referralCommissionRate} /></div> : (
+                    {loadingAuth ? <div className="h-full flex items-center justify-center"><div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div> : currentView === 'profile' ? <ProfileView totalEarnings={displayEarnings.lifetime} totalOnboarded={allAppointments.filter(a => (isAdmin ? true : a.userId === user?.id) && a.stage === AppointmentStage.ONBOARDED).length} onReplayTutorial={() => setForceTutorial(true)} /> : currentView === 'admin-dashboard' ? <AdminDashboard members={allUsers.filter(u => u.role !== 'admin').map(u => ({ id: u.id, name: u.name, role: u.role as any, status: 'Online', onboardedCount: allAppointments.filter(a => a.userId === u.id && a.stage === AppointmentStage.ONBOARDED).length, totalEarnings: (allAppointments.filter(a => a.userId === u.id && a.stage === AppointmentStage.ONBOARDED).reduce((s, a) => s + (a.earnedAmount || 0) + ((a.referralCount || 0) * referralCommissionRate), 0)) + allIncentives.filter(i => i.userId === u.id || i.userId === 'team').reduce((s, i) => s + i.amountCents, 0), lastActive: 'Recently', avatarId: u.avatarId }))} payCycles={payCycles} onAddCycle={(s, e) => supabase.from('pay_cycles').insert({ id: generateId(), start_date: s, end_date: e, status: 'active' }).then(() => refreshData())} onEditCycle={(id, s, e) => supabase.from('pay_cycles').update({ start_date: s, end_date: e }).eq('id', id).then(() => refreshData())} onDeleteCycle={id => supabase.from('pay_cycles').delete().eq('id', id).then(() => refreshData())} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralRate={referralCommissionRate} onUpdateMasterCommissions={handleUpdateMasterCommissions} onLogOnboard={() => setIsCreateModalOpen(true)} appointments={allAppointments} activeCycle={activeCycle} activityLogs={activityLogs} onApplyIncentive={i => supabase.from('incentives').insert({ ...i, id: generateId(), created_at: new Date().toISOString() }).then(() => refreshData())} allUsers={allUsers} lifetimeTeamEarnings={displayEarnings.lifetime} incentiveRules={allIncentiveRules} onDeleteIncentiveRule={id => supabase.from('incentive_rules').delete().eq('id', id).then(() => refreshData())} allIncentives={allIncentives} onImportReferrals={handleImportReferrals} onManualReferral={handleManualReferralUpdate} onDeleteReferral={handleDeleteReferralEntry} /> : currentView === 'user-analytics' ? <div className="p-6 max-w-6xl mx-auto"><UserAnalytics appointments={allAppointments.filter(a => a.userId === user?.id)} allAppointments={allAppointments} allIncentives={allIncentives} earnings={displayEarnings} activeCycle={activeCycle} payCycles={payCycles} currentUserName={user?.name || ''} currentUser={user!} referralRate={referralCommissionRate} /></div> : currentView === 'calendar' ? <div className="p-6 max-w-6xl mx-auto"><CalendarView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, isAdmin ? allAppointments : allAppointments.filter(item => item.userId === user?.id))} userRole={user?.role || 'agent'} users={allUsers} activeCycle={activeCycle} /></div> : currentView === 'onboarded' ? <div className="p-6 max-w-6xl mx-auto"><OnboardedView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} searchQuery={searchQuery} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={(a, stack) => handleOpenBusinessCard(a, stack)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} users={allUsers} payCycles={payCycles} userRole={user?.role || 'agent'} currentWindow={displayEarnings.current} referralRate={referralCommissionRate} /></div> : currentView === 'earnings-full' ? <div className="p-6 max-w-6xl mx-auto"><EarningsFullView history={displayEarnings.history} currentWindow={displayEarnings.current} appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} users={allUsers} userRole={user?.role || 'agent'} currentUserName={user?.name || ''} onDismissCycle={id => supabase.from('users').update({ dismissed_cycle_ids: [...(user?.dismissedCycleIds || []), id] }).eq('id', user?.id).then(() => refreshData())} incentives={allIncentives} referralRate={referralCommissionRate} /></div> : (
                         <div className="relative p-6 min-h-full">
                             <div className="sticky top-0 z-20 flex justify-end mb-6 pointer-events-none">
                                 <button
@@ -358,15 +376,15 @@ export default function App() {
                             />
 
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-                                {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, ...(showFailedSection ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
+                                {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, ...(user.showFailedSection ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
                                     const searchLower = searchQuery.toLowerCase();
                                     const items = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user.id)).filter(a => {
                                         if (a.stage !== stage) return false;
                                         if (stage === AppointmentStage.ONBOARDED && activeCycle) {
                                             const start = new Date(activeCycle.startDate).getTime();
                                             const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
-                                            const scheduled = new Date(a.scheduledAt).getTime();
-                                            if (scheduled < start || scheduled > end) return false;
+                                            const onboarded = new Date(a.onboardedAt || a.scheduledAt).getTime();
+                                            if (onboarded < start || onboarded > end) return false;
                                         }
                                         if (searchQuery) {
                                             const matches = a.name.toLowerCase().includes(searchLower) || a.phone.includes(searchLower) || (a.email && a.email.toLowerCase().includes(searchLower)) || (a.notes && a.notes.toLowerCase().includes(searchLower)) || (a.aeName && a.aeName.toLowerCase().includes(searchLower)) || formatDate(a.scheduledAt).toLowerCase().includes(searchLower);

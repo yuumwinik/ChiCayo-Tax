@@ -81,7 +81,7 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                 const start = new Date(cycle.startDate).getTime();
                 const end = new Date(cycle.endDate).setHours(23, 59, 59, 999);
                 result = result.filter(a => {
-                    const d = new Date(a.scheduledAt).getTime();
+                    const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
                     return d >= start && d <= end;
                 });
             }
@@ -105,8 +105,8 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
             result = result.sort((a, b) => (b.referralCount || 0) - (a.referralCount || 0));
         } else {
             result = result.sort((a, b) => {
-                const dateA = new Date(a.scheduledAt).getTime();
-                const dateB = new Date(b.scheduledAt).getTime();
+                const dateA = new Date(a.onboardedAt || a.scheduledAt).getTime();
+                const dateB = new Date(b.onboardedAt || b.scheduledAt).getTime();
                 return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
             });
         }
@@ -118,7 +118,7 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
         const groups: Record<string, Appointment[]> = {};
 
         filtered.forEach(appt => {
-            const d = new Date(appt.scheduledAt);
+            const d = new Date(appt.onboardedAt || appt.scheduledAt);
             const key = d.toLocaleDateString('en-CA');
             if (!groups[key]) groups[key] = [];
             groups[key].push(appt);

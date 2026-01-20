@@ -9,6 +9,7 @@ import {
     IconUsers, IconAlertTriangle
 } from './Icons';
 import { ProtocolModal } from './ProtocolModal';
+import { useUser } from '../contexts/UserContext';
 
 interface BusinessCardModalProps {
     isOpen: boolean;
@@ -30,6 +31,7 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
     isOpen, onClose, appointment, onEdit, onDelete, onMoveStage, onSaveNotes,
     onNext, onPrev, hasNext, hasPrev, referralRate, onUpdateReferrals
 }) => {
+    const { user } = useUser();
     const [notes, setNotes] = useState('');
     const [copiedPhone, setCopiedPhone] = useState(false);
     const [copiedName, setCopiedName] = useState(false);
@@ -50,11 +52,15 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
         onUpdateReferrals(appointment.id, next);
     };
 
-    const copyToClipboard = (text: string, type: 'phone' | 'name') => {
+    const copyToClipboard = (text: string, type: 'phone' | 'name' | 'email') => {
+        if (!text) return;
         navigator.clipboard.writeText(text);
         if (type === 'phone') { setCopiedPhone(true); setTimeout(() => setCopiedPhone(false), 2000); }
-        else { setCopiedName(true); setTimeout(() => setCopiedName(false), 2000); }
+        else if (type === 'name') { setCopiedName(true); setTimeout(() => setCopiedName(false), 2000); }
+        else { setCopiedEmail(true); setTimeout(() => setCopiedEmail(false), 2000); }
     };
+
+    const [copiedEmail, setCopiedEmail] = useState(false);
 
     return (
         <div className="fixed inset-0 z-[80] flex items-end md:items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
@@ -71,9 +77,13 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                     <h2 onClick={() => copyToClipboard(appointment.name, 'name')} className={`text-2xl font-black mb-1 transition-colors cursor-pointer ${copiedName ? 'text-emerald-600' : 'text-slate-900 dark:text-white'}`}>{appointment.name}</h2>
                     <div className="flex flex-col items-center gap-2 mb-6">
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><IconCalendar className="w-3 h-3" /> Captured {formatDate(appointment.createdAt)}</div>
-                        <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 ${getRelativeTime(appointment.scheduledAt).isPast && isActionable ? 'bg-rose-100 text-rose-600 border border-rose-200 animate-pulse' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>
-                            {getRelativeTime(appointment.scheduledAt).isPast && isActionable && <IconAlertTriangle className="w-3 h-3" />}
-                            {isActionable ? (getRelativeTime(appointment.scheduledAt).isPast ? `Overdue ${getRelativeTime(appointment.scheduledAt).label}` : `Due ${getRelativeTime(appointment.scheduledAt).label}`) : STAGE_LABELS[appointment.stage]}
+                        <div className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest flex flex-col items-center gap-1 shadow-sm border ${getRelativeTime(appointment.scheduledAt).isPast && isActionable ? 'bg-rose-100 text-rose-600 border-rose-200 animate-pulse' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                            <div className="flex items-center gap-1.5">
+                                {getRelativeTime(appointment.scheduledAt).isPast && isActionable && <IconAlertTriangle className="w-3 h-3" />}
+                                <IconClock className="w-3.5 h-3.5 opacity-50" />
+                                {isActionable ? (getRelativeTime(appointment.scheduledAt).isPast ? `Overdue ${getRelativeTime(appointment.scheduledAt).label}` : `Due ${getRelativeTime(appointment.scheduledAt).label}`) : STAGE_LABELS[appointment.stage]}
+                            </div>
+                            <div className="text-[9px] opacity-60 font-bold">{formatDate(appointment.scheduledAt)}</div>
                         </div>
                     </div>
 
@@ -98,13 +108,19 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
 
                 <div className="w-full md:w-7/12 p-8 flex flex-col bg-white dark:bg-slate-900 overflow-y-auto no-scrollbar pb-24 md:pb-8">
                     <div className="grid grid-cols-2 gap-4 mb-6">
-                        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 group transition-all hover:border-indigo-200">
+                        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 group transition-all hover:border-indigo-200 relative">
                             <div className="flex items-center gap-2 mb-2"><IconPhone className="w-3.5 h-3.5 text-indigo-500" /><span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Phone</span></div>
-                            <ProtocolModal type="phone" value={appointment.phone}>{(trigger) => <button onClick={trigger} className="text-xs font-black text-slate-900 dark:text-white hover:text-indigo-600">{appointment.phone}</button>}</ProtocolModal>
+                            <div className="flex items-center justify-between">
+                                <ProtocolModal type="phone" value={appointment.phone}>{(trigger) => <button onClick={trigger} className="text-xs font-black text-slate-900 dark:text-white hover:text-indigo-600">{appointment.phone}</button>}</ProtocolModal>
+                                <button onClick={() => copyToClipboard(appointment.phone, 'phone')} className={`p-1.5 rounded-lg transition-all ${copiedPhone ? 'bg-emerald-100 text-emerald-600' : 'text-slate-300 hover:text-indigo-600 hover:bg-white'}`}><IconCopy className="w-3.5 h-3.5" /></button>
+                            </div>
                         </div>
-                        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 group transition-all hover:border-blue-200">
+                        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 group transition-all hover:border-blue-200 relative">
                             <div className="flex items-center gap-2 mb-2"><IconMail className="w-3.5 h-3.5 text-blue-500" /><span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Email</span></div>
-                            <ProtocolModal type="email" value={appointment.email} templatePath={isOnboarded ? "Files/Welcome to the Community Tax – SBTPG Referral Program.oft" : undefined}>{(trigger) => <button onClick={trigger} className="text-xs font-black text-slate-900 dark:text-white hover:text-blue-600 truncate block w-full">{appointment.email || 'None'}</button>}</ProtocolModal>
+                            <div className="flex items-center justify-between">
+                                <ProtocolModal type="email" value={appointment.email} templatePath={isOnboarded ? "Files/Welcome to the Community Tax – SBTPG Referral Program.oft" : undefined}>{(trigger) => <button onClick={trigger} className="text-xs font-black text-slate-900 dark:text-white hover:text-blue-600 truncate block max-w-[120px]">{appointment.email || 'None'}</button>}</ProtocolModal>
+                                <button onClick={() => copyToClipboard(appointment.email || '', 'email')} className={`p-1.5 rounded-lg transition-all ${copiedEmail ? 'bg-emerald-100 text-emerald-600' : 'text-slate-300 hover:text-blue-600 hover:bg-white'}`}><IconCopy className="w-3.5 h-3.5" /></button>
+                            </div>
                         </div>
                     </div>
 
@@ -119,10 +135,12 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                                     <div className="text-2xl font-black text-rose-600 dark:text-rose-400">{appointment.referralCount || 0}</div>
                                     <div className="text-[10px] font-bold text-slate-500 uppercase">Successful Referrals</div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => handleUpdateReferrals(-1)} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border border-rose-200 text-rose-600 hover:bg-rose-50 font-black transition-all">-</button>
-                                    <button onClick={() => handleUpdateReferrals(1)} className="w-10 h-10 rounded-xl bg-rose-600 text-white shadow-lg shadow-rose-200 hover:bg-rose-700 flex items-center justify-center transition-all"><IconPlus className="w-5 h-5" /></button>
-                                </div>
+                                {user?.role === 'admin' && (
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleUpdateReferrals(-1)} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border border-rose-200 text-rose-600 hover:bg-rose-50 font-black transition-all">-</button>
+                                        <button onClick={() => handleUpdateReferrals(1)} className="w-10 h-10 rounded-xl bg-rose-600 text-white shadow-lg shadow-rose-200 hover:bg-rose-700 flex items-center justify-center transition-all"><IconPlus className="w-5 h-5" /></button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -133,14 +151,12 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                     </div>
 
                     <div className="mt-6 flex flex-wrap gap-3">
-                        {isActionable && (
-                            <button
-                                onClick={() => { onMoveStage(appointment.id, AppointmentStage.NO_SHOW); onClose(); }}
-                                className="flex-1 py-4 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-black rounded-2xl text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-100 transition-colors"
-                            >
-                                <IconAlertTriangle className="w-4 h-4" /> Mark as Failed
-                            </button>
-                        )}
+                        <button
+                            onClick={() => { onMoveStage(appointment.id, AppointmentStage.NO_SHOW); onClose(); }}
+                            className="flex-1 py-4 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-black rounded-2xl text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-100 transition-colors"
+                        >
+                            <IconAlertTriangle className="w-4 h-4" /> Mark as Failed
+                        </button>
                         <button onClick={() => { onEdit(appointment); onClose(); }} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black rounded-2xl text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-200 transition-colors"><IconEdit className="w-4 h-4" /> Master Edit</button>
                         <button onClick={() => { onDelete(appointment.id); onClose(); }} className="p-4 bg-rose-50 text-rose-600 rounded-2xl hover:bg-rose-100 transition-colors"><IconTrash className="w-5 h-5" /></button>
                     </div>

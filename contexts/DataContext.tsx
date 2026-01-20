@@ -26,6 +26,7 @@ interface DataContextType {
     handleSaveAppointment: (data: any) => Promise<void>;
     handleMoveStage: (id: string, stage: AppointmentStage, isManualSelfOnboard?: boolean) => Promise<void>;
     handleDeleteAppointment: (id: string) => Promise<void>;
+    undoLastAction: () => Promise<void>;
     displayEarnings: { current: EarningWindow | null, history: EarningWindow[], lifetime: number };
     activeCycle: PayCycle | undefined;
     teamCurrentCycleTotal: number;
@@ -43,6 +44,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [payCycles, setPayCycles] = useState<PayCycle[]>([]);
     const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+    const [lastAction, setLastAction] = useState<{ id: string, stage: AppointmentStage, earnedAmount: number, onboardedAt?: string, notes?: string } | null>(null);
 
     // Settings
     const [commissionRate, setCommissionRate] = useState(200);
@@ -97,7 +99,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     aeName: a.ae_name,
                     referralCount: a.referral_count || 0,
                     lastReferralAt: a.last_referral_at,
-                    referralHistory: (a.referral_history || []) as ReferralHistoryEntry[]
+                    referralHistory: (a.referral_history || []) as ReferralHistoryEntry[],
+                    onboardedAt: a.onboarded_at
                 })));
             }
 
@@ -312,6 +315,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         }
 
+        if (originalAppt) {
+            setLastAction({
+                id: originalAppt.id,
+                stage: originalAppt.stage,
+                earnedAmount: originalAppt.earnedAmount || 0,
+                onboardedAt: originalAppt.onboardedAt,
+                notes: originalAppt.notes
+            });
+        }
+
         const dbData = {
             name: data.name,
             phone: data.phone,
@@ -323,7 +336,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             type: data.type || 'appointment',
             ae_name: data.aeName,
             earned_amount: data.stage === AppointmentStage.ONBOARDED ? (baseRate + bonus) : 0,
-            referral_count: data.referralCount || 0
+            referral_count: data.referralCount || 0,
+            onboarded_at: (data.stage === AppointmentStage.ONBOARDED && !originalAppt?.onboardedAt) ? new Date().toISOString() : originalAppt?.onboardedAt
         };
         if (data.id) await supabase.from('appointments').update(dbData).eq('id', data.id);
         else await supabase.from('appointments').insert({ ...dbData, id: generateId(), created_at: new Date().toISOString() });
@@ -334,16 +348,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const handleMoveStage = async (id: string, stage: AppointmentStage, isManualSelfOnboard: boolean = false) => {
-        const appt = allAppointments.find(a => a.id === id); if (!appt) return;
+        const appt = allAppointments.find(a => a.id === id);
+        if (!appt) return;
+
+        setLastAction({
+            id: appt.id,
+            stage: appt.stage,
+            earnedAmount: appt.earnedAmount || 0,
+            onboardedAt: appt.onboardedAt,
+            notes: appt.notes
+        });
 
         if (stage === AppointmentStage.ONBOARDED) {
             const agent = allUsers.find(u => u.id === appt.userId);
+            const now = new Date().toISOString();
 
             if (isManualSelfOnboard) {
                 await supabase.from('appointments').update({
                     stage: AppointmentStage.ONBOARDED,
                     earned_amount: selfCommissionRate,
-                    ae_name: agent?.name
+                    ae_name: agent?.name,
+                    onboarded_at: now
                 }).eq('id', id);
                 await refreshData();
                 return;
@@ -352,7 +377,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (appt.stage === AppointmentStage.TRANSFERRED) {
                 const isSelf = appt.aeName === agent?.name;
                 const baseRate = isSelf ? selfCommissionRate : commissionRate;
-                await supabase.from('appointments').update({ stage: AppointmentStage.ONBOARDED, earned_amount: baseRate }).eq('id', id);
+                await supabase.from('appointments').update({ stage: AppointmentStage.ONBOARDED, earned_amount: baseRate, onboarded_at: now }).eq('id', id);
                 await refreshData();
             }
             return;
@@ -360,12 +385,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (stage === AppointmentStage.DECLINED) {
             const nurtureDate = new Date();
             nurtureDate.setDate(nurtureDate.getDate() + 30);
-            await supabase.from('appointments').update({ stage, earned_amount: 0, nurture_date: nurtureDate.toISOString() }).eq('id', id);
+            await supabase.from('appointments').update({ stage, earned_amount: 0, nurture_date: nurtureDate.toISOString(), onboarded_at: null }).eq('id', id);
             await refreshData();
             return;
         }
 
-        await supabase.from('appointments').update({ stage, earned_amount: 0 }).eq('id', id); await refreshData();
+        await supabase.from('appointments').update({ stage, earned_amount: 0, onboarded_at: null }).eq('id', id); await refreshData();
+    };
+
+    const undoLastAction = async () => {
+        if (!lastAction) return;
+        const { id, stage, earnedAmount, onboardedAt, notes } = lastAction;
+        await supabase.from('appointments').update({
+            stage,
+            earned_amount: earnedAmount,
+            onboarded_at: onboardedAt || null,
+            notes: notes || null
+        }).eq('id', id);
+        setLastAction(null);
+        await refreshData();
     };
 
     const handleDeleteAppointment = async (id: string) => {
@@ -394,7 +432,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const windows: EarningWindow[] = [...uniqueCycles].sort((a: PayCycle, b: PayCycle) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime()).reduce<EarningWindow[]>((acc: EarningWindow[], cycle: PayCycle) => {
             const start = new Date(cycle.startDate).getTime(); const end = new Date(cycle.endDate).setHours(23, 59, 59, 999);
             if (start > now) return acc;
-            const cycleAppts = onboardedOnly.filter(a => { const d = new Date(a.scheduledAt).getTime(); return d >= start && d <= end; });
+            const cycleAppts = onboardedOnly.filter(a => {
+                const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
+                return d >= start && d <= end;
+            });
             const cycleIncentives = relevantIncentives.filter(i => i.appliedCycleId === cycle.id);
 
             const cycleProdTotal = cycleAppts.reduce((s, a) => {
@@ -423,7 +464,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const start = new Date(activeCycle.startDate).getTime();
         const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
         return allAppointments
-            .filter(a => a.stage === AppointmentStage.ONBOARDED && new Date(a.scheduledAt).getTime() >= start && new Date(a.scheduledAt).getTime() <= end)
+            .filter(a => a.stage === AppointmentStage.ONBOARDED && new Date(a.onboardedAt || a.scheduledAt).getTime() >= start && new Date(a.onboardedAt || a.scheduledAt).getTime() <= end)
             .reduce((sum, a) => {
                 const base = a.earnedAmount || 0;
                 // Referral commissions are now Incentives
@@ -454,6 +495,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             handleSaveAppointment,
             handleMoveStage,
             handleDeleteAppointment,
+            undoLastAction,
             displayEarnings,
             activeCycle,
             teamCurrentCycleTotal

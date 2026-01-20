@@ -78,7 +78,7 @@ export const ReferralMomentumWidget: React.FC<ReferralMomentumWidgetProps> = ({
                                     </div>
                                     <div>
                                         <h4 className="font-black text-slate-900 dark:text-white uppercase tracking-tight truncate w-32">{partner.name}</h4>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Onboarded {formatDate(partner.scheduledAt).split(',')[0]}</p>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Onboarded {formatDate(partner.onboardedAt || partner.scheduledAt).split(',')[0]}</p>
                                     </div>
                                 </div>
                                 <div className="text-right">

@@ -45,6 +45,7 @@ export interface User {
   notificationSettings?: NotificationSettings;
   preferredDialer?: string;
   dismissedCycleIds?: string[];
+  showFailedSection?: boolean;
 }
 
 export interface PayCycle {
@@ -78,6 +79,7 @@ export interface Appointment {
   lastReferralAt?: string;
   referralHistory?: ReferralHistoryEntry[];
   nurtureDate?: string;
+  onboardedAt?: string;
 }
 
 export interface Incentive {

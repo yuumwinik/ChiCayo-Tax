@@ -183,7 +183,16 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
 
       <div className="flex gap-2 mt-auto pt-2 border-t border-slate-100 dark:border-slate-700/50 relative z-10">
         {appointment.stage === AppointmentStage.TRANSFERRED ? (
-          <button onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED); }} className="w-full py-2 px-2 text-[10px] font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors flex items-center justify-center gap-1"><IconCheck className="w-3 h-3" /> Confirm Onboard</button>
+          <div className="flex items-center gap-1.5 w-full">
+            <button
+              onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.NO_SHOW); }}
+              title="Failed to Show (Move to No Show)"
+              className="w-10 h-10 flex items-center justify-center rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50"
+            >
+              <IconAlertCircle className="w-4 h-4" />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED); }} className="flex-1 py-2 px-2 h-10 text-[10px] font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors flex items-center justify-center gap-1"><IconCheck className="w-3 h-3" /> Confirm Onboard</button>
+          </div>
         ) : (appointment.stage === AppointmentStage.PENDING || appointment.stage === AppointmentStage.RESCHEDULED) ? (
           <div className="flex items-center justify-between w-full gap-1.5">
             <button

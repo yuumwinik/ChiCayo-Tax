@@ -35,7 +35,7 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
             // Calculate velocity (days from onboard to first referral)
             let velocityDays: number | null = null;
             if (p.referralHistory && p.referralHistory.length > 0) {
-                const onboardedAt = new Date(p.scheduledAt).getTime();
+                const onboardedAt = new Date(p.onboardedAt || p.scheduledAt).getTime();
                 const firstRefAt = new Date(p.referralHistory[0].date).getTime();
                 velocityDays = Math.max(0, Math.floor((firstRefAt - onboardedAt) / (1000 * 60 * 60 * 24)));
             }
@@ -47,7 +47,7 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
                 agentName: users.find(u => u.id === p.userId)?.name || 'Unknown',
                 referralCount: p.referralCount || 0,
                 totalEarned,
-                onboardedAt: p.scheduledAt,
+                onboardedAt: p.onboardedAt || p.scheduledAt,
                 lastReferralAt: p.lastReferralAt,
                 velocityDays,
                 history: p.referralHistory || []

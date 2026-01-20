@@ -125,7 +125,7 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       const e = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
       relevantAppointments.forEach(a => {
         if (a.stage === AppointmentStage.ONBOARDED) {
-          const d = new Date(a.scheduledAt).getTime();
+          const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
           if (d >= s && d <= e) {
             const agent = allUsers.find(u => u.id === a.userId);
             const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
@@ -143,7 +143,7 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       .slice(0, 12)
       .map(c => {
         const cycleAppts = relevantAppointments.filter(a => {
-          const d = new Date(a.scheduledAt).getTime();
+          const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
           return d >= new Date(c.startDate).getTime() && d <= new Date(c.endDate).setHours(23, 59, 59, 999);
         });
         const cycleWins = cycleAppts.filter(a => a.stage === AppointmentStage.ONBOARDED);
@@ -197,8 +197,8 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
         },
         historicalPerformance: history
       },
-      recentAppointments: relevantAppointments.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()).slice(0, 50).map(a => ({
-        name: a.name, time: a.scheduledAt, stage: a.stage, ae: a.aeName, amt: formatCurrency(a.earnedAmount || 0)
+      recentAppointments: relevantAppointments.sort((a, b) => new Date(b.onboardedAt || b.scheduledAt).getTime() - new Date(a.onboardedAt || a.scheduledAt).getTime()).slice(0, 50).map(a => ({
+        name: a.name, time: a.onboardedAt || a.scheduledAt, stage: a.stage, ae: a.aeName, amt: formatCurrency(a.earnedAmount || 0)
       })),
       teamMembers: user.role === 'admin' ? allUsers.filter(u => u.role !== 'admin').map(u => ({
         name: u.name,

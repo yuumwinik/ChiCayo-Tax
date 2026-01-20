@@ -7,7 +7,7 @@ interface UserContextType {
     loadingAuth: boolean;
     setUser: (user: User | null) => void;
     refreshUser: () => Promise<void>;
-    updateProfile: (name: string, avatarId: any, notificationSettings: any, preferredDialer: string) => Promise<void>;
+    updateProfile: (name: string, avatarId: any, notificationSettings: any, preferredDialer: string, showFailedSection?: boolean) => Promise<void>;
     isAdmin: boolean;
 }
 
@@ -34,7 +34,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         hasSeenTutorial: profile.has_seen_tutorial,
                         notificationSettings: profile.notification_settings,
                         preferredDialer: profile.preferred_dialer,
-                        dismissedCycleIds: profile.dismissed_cycle_ids || []
+                        dismissedCycleIds: profile.dismissed_cycle_ids || [],
+                        showFailedSection: profile.show_failed_section ?? true
                     });
                 }
             } else {
@@ -48,13 +49,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
-    const updateProfile = async (name: string, avatarId: any, notificationSettings: any, preferredDialer: string) => {
+    const updateProfile = async (name: string, avatarId: any, notificationSettings: any, preferredDialer: string, showFailedSection?: boolean) => {
         if (!user) return;
         await supabase.from('users').update({
             name,
             avatar_id: avatarId,
             notification_settings: notificationSettings,
-            preferred_dialer: preferredDialer
+            preferred_dialer: preferredDialer,
+            show_failed_section: showFailedSection
         }).eq('id', user.id);
         await refreshUser();
     };

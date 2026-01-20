@@ -7,15 +7,13 @@ import { CustomSelect } from './CustomSelect';
 import { useUser } from '../contexts/UserContext';
 
 interface ProfileViewProps {
-  showFailedSection?: boolean;
-  onToggleFailedSection?: (show: boolean) => void;
   onReplayTutorial?: () => void;
   totalEarnings?: number; // kept as optional in case we still want to pass it
   totalOnboarded?: number;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
-  showFailedSection = true, onToggleFailedSection, onReplayTutorial,
+  onReplayTutorial,
   totalEarnings = 0, totalOnboarded = 0
 }) => {
   const { user, updateProfile } = useUser();
@@ -44,7 +42,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </button>
         <div className="space-y-2 w-full max-w-sm">
           {isEditing ? (
-            <div className="flex gap-2"><input value={name} onChange={(e) => setName(e.target.value)} className="w-full text-center text-2xl font-bold bg-slate-100 dark:bg-slate-800 rounded-xl px-4 py-2 border-none" autoFocus /><button onClick={() => { updateProfile(name, user.avatarId, user.notificationSettings, dialerApp); setIsEditing(false); }} className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium">Save</button></div>
+            <div className="flex gap-2"><input value={name} onChange={(e) => setName(e.target.value)} className="w-full text-center text-2xl font-bold bg-slate-100 dark:bg-slate-800 rounded-xl px-4 py-2 border-none" autoFocus /><button onClick={() => { updateProfile(name, user.avatarId, user.notificationSettings, dialerApp, user.showFailedSection); setIsEditing(false); }} className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium">Save</button></div>
           ) : (
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => setIsEditing(true)}>{name}</h2>
           )}
@@ -58,13 +56,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       </div>
 
       <div className="space-y-4">
-        {onToggleFailedSection && (
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm"><div className="flex items-center gap-3 mb-4"><div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl"><IconLayout className="w-6 h-6" /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white">Dashboard Layout</h3></div><div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl"><div><div className="font-semibold text-slate-900 dark:text-white">Show Failed Appointments</div><div className="text-sm text-slate-500">Display "Failed" and "Declined" columns.</div></div><button onClick={() => onToggleFailedSection(!showFailedSection)} className={`relative w-14 h-8 rounded-full transition-colors ${showFailedSection ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}><div className={`absolute top-1 left-1 bg-white w-6 h-6 rounded-full shadow-sm transition-transform ${showFailedSection ? 'translate-x-6' : 'translate-x-0'}`}></div></button></div></div>
-        )}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl"><IconLayout className="w-6 h-6" /></div>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Dashboard Layout</h3>
+          </div>
+          <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
+            <div>
+              <div className="font-semibold text-slate-900 dark:text-white">Show Failed Appointments</div>
+              <div className="text-sm text-slate-500">Display "Failed" and "Declined" columns.</div>
+            </div>
+            <button
+              onClick={() => updateProfile(name, user.avatarId, user.notificationSettings, dialerApp, !user.showFailedSection)}
+              className={`relative w-14 h-8 rounded-full transition-colors ${user.showFailedSection ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+            >
+              <div className={`absolute top-1 left-1 bg-white w-6 h-6 rounded-full shadow-sm transition-transform ${user.showFailedSection ? 'translate-x-6' : 'translate-x-0'}`}></div>
+            </button>
+          </div>
+        </div>
 
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm"><div className="flex items-center gap-3 mb-4"><div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-xl text-amber-600"><IconBot className="w-6 h-6" /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white">Alerts & Notifications</h3></div><div className="space-y-4"><div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl"><div><div className="font-semibold text-slate-900 dark:text-white">Notification Pods</div><div className="text-sm text-slate-500">Show reminder bubbles in header.</div></div><button onClick={() => updateProfile(name, user.avatarId, { enabled: !notifEnabled, thresholdMinutes: parseInt(notifThreshold) }, dialerApp)} className={`relative w-14 h-8 rounded-full transition-colors ${notifEnabled ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'}`}><div className={`absolute top-1 left-1 bg-white w-6 h-6 rounded-full transition-transform ${notifEnabled ? 'translate-x-6' : 'translate-x-0'}`}></div></button></div>{notifEnabled && <div className="pt-2"><label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Show alert within:</label><CustomSelect options={[{ value: '5', label: '5 Minutes' }, { value: '10', label: '10 Minutes' }, { value: '15', label: '15 Minutes' }, { value: '30', label: '30 Minutes' }]} value={notifThreshold} onChange={(val) => updateProfile(name, user.avatarId, { enabled: true, thresholdMinutes: parseInt(val) }, dialerApp)} /></div>}</div></div>
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm"><div className="flex items-center gap-3 mb-4"><div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-xl text-amber-600"><IconBot className="w-6 h-6" /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white">Alerts & Notifications</h3></div><div className="space-y-4"><div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl"><div><div className="font-semibold text-slate-900 dark:text-white">Notification Pods</div><div className="text-sm text-slate-500">Show reminder bubbles in header.</div></div><button onClick={() => updateProfile(name, user.avatarId, { enabled: !notifEnabled, thresholdMinutes: parseInt(notifThreshold) }, dialerApp, user.showFailedSection)} className={`relative w-14 h-8 rounded-full transition-colors ${notifEnabled ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'}`}><div className={`absolute top-1 left-1 bg-white w-6 h-6 rounded-full transition-transform ${notifEnabled ? 'translate-x-6' : 'translate-x-0'}`}></div></button></div>{notifEnabled && <div className="pt-2"><label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Show alert within:</label><CustomSelect options={[{ value: '5', label: '5 Minutes' }, { value: '10', label: '10 Minutes' }, { value: '15', label: '15 Minutes' }, { value: '30', label: '30 Minutes' }]} value={notifThreshold} onChange={(val) => updateProfile(name, user.avatarId, { enabled: true, thresholdMinutes: parseInt(val) }, dialerApp, user.showFailedSection)} /></div>}</div></div>
 
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm"><div className="flex items-center gap-3 mb-4"><div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl text-indigo-600"><IconPhone className="w-6 h-6" /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white">Calling Preferences</h3></div><div className="space-y-4"><div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl"><label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Default Dialer App</label><CustomSelect options={DIALER_OPTIONS} value={dialerApp} onChange={(val) => updateProfile(name, user.avatarId, user.notificationSettings, val)} /></div></div></div>
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm"><div className="flex items-center gap-3 mb-4"><div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl text-indigo-600"><IconPhone className="w-6 h-6" /></div><h3 className="text-xl font-bold text-slate-900 dark:text-white">Calling Preferences</h3></div><div className="space-y-4"><div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl"><label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Default Dialer App</label><CustomSelect options={DIALER_OPTIONS} value={dialerApp} onChange={(val) => updateProfile(name, user.avatarId, user.notificationSettings, val, user.showFailedSection)} /></div></div></div>
 
         {onReplayTutorial && (
           <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -78,7 +91,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         )}
       </div>
-      <AvatarSelector isOpen={isAvatarSelectorOpen} onClose={() => setIsAvatarSelectorOpen(false)} onSelect={(id) => updateProfile(name, id, user.notificationSettings, dialerApp)} currentId={user.avatarId} userName={name} />
+      <AvatarSelector isOpen={isAvatarSelectorOpen} onClose={() => setIsAvatarSelectorOpen(false)} onSelect={(id) => updateProfile(name, id, user.notificationSettings, dialerApp, user.showFailedSection)} currentId={user.avatarId} userName={name} />
     </div>
   );
 };

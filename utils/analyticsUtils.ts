@@ -8,7 +8,7 @@ export function calculatePeakTime(appointments: Appointment[]): { hour: number; 
     const hourCounts: Record<number, number> = {};
 
     onboarded.forEach(a => {
-        const date = new Date(a.scheduledAt);
+        const date = new Date(a.onboardedAt || a.scheduledAt);
         const hour = date.getHours();
         hourCounts[hour] = (hourCounts[hour] || 0) + 1;
     });
@@ -42,7 +42,7 @@ export function detectAnomalies(appointments: Appointment[]): string[] {
 
     // 1. Late Night Activity Detect
     const lateNight = onboarded.filter(a => {
-        const h = new Date(a.scheduledAt).getHours();
+        const h = new Date(a.onboardedAt || a.scheduledAt).getHours();
         return h >= 22 || h <= 5;
     });
     if (lateNight.length > 5) {
@@ -51,7 +51,7 @@ export function detectAnomalies(appointments: Appointment[]): string[] {
 
     // 2. Velocity Anomaly (Too Fast)
     const instantOnboards = onboarded.filter(a => {
-        const diff = new Date(a.scheduledAt).getTime() - new Date(a.createdAt).getTime();
+        const diff = new Date(a.onboardedAt || a.scheduledAt).getTime() - new Date(a.createdAt).getTime();
         return diff < 1000 * 60 * 5; // Less than 5 mins
     });
     if (instantOnboards.length > 3) {
@@ -93,7 +93,7 @@ export function generateCoachingInsights(appointments: Appointment[]): string[] 
     if (onboarded.length > 0) {
         const transfers = appointments.filter(a => a.stage === AppointmentStage.TRANSFERRED || a.stage === AppointmentStage.ONBOARDED);
         const avgResponseTime = transfers.reduce((sum, a) => {
-            const diff = new Date(a.scheduledAt).getTime() - new Date(a.createdAt).getTime();
+            const diff = new Date(a.onboardedAt || a.scheduledAt).getTime() - new Date(a.createdAt).getTime();
             return sum + diff;
         }, 0) / transfers.length;
 
