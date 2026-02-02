@@ -11,9 +11,14 @@ interface AdminAnalyticsProps {
   appointments: Appointment[];
   payCycles: PayCycle[];
   users: User[];
+  commissionRate: number;
+  selfCommissionRate: number;
+  referralRate: number;
 }
 
-export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, appointments, payCycles, users }) => {
+export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ 
+  members, stats, appointments, payCycles, users, commissionRate, selfCommissionRate, referralRate 
+}) => {
   const [selectedCycleId, setSelectedCycleId] = useState<string>('active');
   const [selectedAgentId, setSelectedAgentId] = useState<string>('all');
   
@@ -71,10 +76,10 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
 
     onboardedAppts.forEach(a => {
         const agent = users.find(u => u.id === a.userId);
-        // CRITICAL FIX: Ensure aeName is strictly checked against the agent's name
         const isSelf = !a.aeName || a.aeName === agent?.name;
         
-        const amt = a.earnedAmount !== undefined ? a.earnedAmount : (isSelf ? 300 : 200);
+        // Patch: Use passed rate state instead of hardcoded numbers
+        const amt = a.earnedAmount !== undefined ? a.earnedAmount : (isSelf ? selfCommissionRate : commissionRate);
         if (isSelf) {
             selfRev += amt;
             selfCount++;
@@ -89,7 +94,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
         const agent = users.find(u => u.id === a.userId);
         const agentName = agent?.name || 'Unknown';
         const isSelf = !a.aeName || a.aeName === agentName;
-        const amt = a.earnedAmount !== undefined ? a.earnedAmount : (isSelf ? 300 : 200);
+        const amt = a.earnedAmount !== undefined ? a.earnedAmount : (isSelf ? selfCommissionRate : commissionRate);
 
         if (a.aeName && !isSelf) {
             if (!synergy[agentName]) synergy[agentName] = {};
@@ -112,7 +117,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
         transferRevenue: transferRev,
         synergy
     };
-  }, [filteredAppointments, users]);
+  }, [filteredAppointments, users, commissionRate, selfCommissionRate]);
 
   const radius = 40;
   const circumference = 2 * Math.PI * radius;
@@ -194,12 +199,12 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
                   value: filteredAppointments.filter(a => {
                       const agent = users.find(u => u.id === a.userId);
                       return a.aeName === name && a.stage === AppointmentStage.ONBOARDED && a.aeName !== agent?.name;
-                  }).reduce((s,a) => s + (a.earnedAmount || 200), 0),
+                  }).reduce((s,a) => s + (a.earnedAmount || commissionRate), 0),
                   color: name === 'Joshua' ? '#3b82f6' : name === 'Jorge' ? '#f97316' : '#a855f7',
                   label: `AE ${name}`
               })),
               ...members.map((m, i) => ({
-                  value: filteredAppointments.filter(a => a.userId === m.id && (!a.aeName || a.aeName === m.name) && a.stage === AppointmentStage.ONBOARDED).reduce((s,a) => s + (a.earnedAmount || 300), 0),
+                  value: filteredAppointments.filter(a => a.userId === m.id && (!a.aeName || a.aeName === m.name) && a.stage === AppointmentStage.ONBOARDED).reduce((s,a) => s + (a.earnedAmount || selfCommissionRate), 0),
                   color: '#10b981',
                   label: `${m.name} (Self)`
               }))

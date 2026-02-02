@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PayCycle, Appointment, User, AppointmentStage, ReferralHistoryEntry } from '../../types';
 import { formatDate, formatCurrency } from '../../utils/dateUtils';
-import { IconPlus, IconCycle, IconTrash, IconDollarSign, IconChevronUp, IconChevronDown, IconEdit, IconCheck, IconX, IconClock, IconSparkles, IconLock, IconUsers, IconDownload, IconCalendar, IconBot, IconSearch, IconActivity, IconTransfer, IconBriefcase } from '../Icons';
+import { IconPlus, IconCycle, IconTrash, IconDollarSign, IconChevronUp, IconChevronDown, IconEdit, IconCheck, IconX, IconClock, IconSparkles, IconLock, IconUsers, IconDownload, IconCalendar, IconBot, IconSearch, IconActivity, IconTransfer, IconBriefcase, IconUser } from '../Icons';
 import { CustomDatePicker } from '../CustomDatePicker';
 import { DeleteConfirmationModal } from '../DeleteConfirmationModal';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -50,7 +50,6 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
   const [showManualSync, setShowManualSync] = useState(false);
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
 
-  // PREVIEW MODAL STATE
   const [previewData, setPreviewData] = useState<{ rows: any[], source: 'ai' | 'file' } | null>(null);
 
   useEffect(() => {
@@ -77,14 +76,42 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
       const reader = new FileReader();
       reader.onload = (event) => {
           const text = event.target?.result as string;
-          const rows = text.split('\n').slice(1).filter(r => r.trim());
-          const parsedData = rows.map(row => {
-              const cols = row.split(',').map(c => c.replace(/^"|"$/g, '').trim());
-              return { date: cols[1] || cols[0], name: cols[4] || '', phone: cols[5] || '', referrals: parseInt(cols[9] || '0') };
+          const lines = text.split('\n').filter(l => l.trim());
+          if (lines.length < 2) return;
+
+          const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+          const idxName = headers.findIndex(h => h.includes('name') || h.includes('client'));
+          const idxPhone = headers.findIndex(h => h.includes('phone') || h.includes('tel'));
+          const idxRefs = headers.findIndex(h => h.includes('referral') || h.includes('count'));
+          const idxDate = headers.findIndex(h => h.includes('date'));
+
+          const parsedData = lines.slice(1).map(line => {
+              const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+              const name = idxName !== -1 ? cols[idxName] : '';
+              const phone = idxPhone !== -1 ? cols[idxPhone] : '';
+              
+              // Lookup agent for preview
+              const cleanName = name.toLowerCase().trim();
+              const cleanPhone = phone.replace(/\D/g, '');
+              const match = appointments.find(a => 
+                  a.stage === AppointmentStage.ONBOARDED && 
+                  (a.name.toLowerCase().trim() === cleanName || (cleanPhone && a.phone.replace(/\D/g, '').includes(cleanPhone)))
+              );
+              const agent = allUsers.find(u => u.id === match?.userId);
+
+              return { 
+                date: idxDate !== -1 ? cols[idxDate] : new Date().toISOString(), 
+                name: name, 
+                phone: phone, 
+                referrals: idxRefs !== -1 ? parseInt(cols[idxRefs] || '0') : 0,
+                agentName: agent?.name || 'Unmatched'
+              };
           }).filter(d => (d.name || d.phone) && !isNaN(d.referrals));
           
           if (parsedData.length > 0) {
               setPreviewData({ rows: parsedData, source: 'file' });
+          } else {
+              alert("Could not identify 'Name' or 'Referrals' columns in the CSV.");
           }
       };
       reader.readAsText(file);
@@ -123,20 +150,24 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
 
           const res = JSON.parse(response.text);
           const target = appointments.find(a => a.id === res.clientId);
+          const agent = allUsers.find(u => u.id === target?.userId);
+          
           if (target) {
             setPreviewData({ 
                 rows: [{ 
                     name: target.name, 
                     phone: target.phone, 
-                    referrals: (target.referralCount || 0) + res.newReferralCount, 
+                    referrals: res.newReferralCount,
                     delta: res.newReferralCount,
-                    clientId: target.id 
+                    clientId: target.id,
+                    totalSoFar: (target.referralCount || 0),
+                    agentName: agent?.name || 'Unknown'
                 }], 
                 source: 'ai' 
             });
           }
       } catch (e) {
-          alert("Taxter couldn't decipher that. Try: 'Client John Doe referred 2 today.'");
+          alert("Taxter couldn't decipher that. Try specifying the exact name.");
       } finally {
           setIsAiProcessing(false);
       }
@@ -148,7 +179,7 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
           if (onImportReferrals) onImportReferrals(previewData.rows);
       } else {
           const entry = previewData.rows[0];
-          if (onManualReferral) onManualReferral(entry.clientId, entry.referrals);
+          if (onManualReferral) onManualReferral(entry.clientId, (entry.totalSoFar || 0) + entry.delta);
           setAiInput('');
       }
       setPreviewData(null);
@@ -161,9 +192,6 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
       }
       if (selectedAgentFilter !== 'all') {
           list = list.filter(a => a.userId === selectedAgentFilter);
-      }
-      if (!lookupQuery && selectedAgentFilter === 'all') {
-          return [...list].sort(() => Math.random() - 0.5).slice(0, 10);
       }
       return list.slice(0, 10);
   }, [appointments, lookupQuery, selectedAgentFilter]);
@@ -186,22 +214,30 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
       {previewData && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300">
               <div className="bg-white dark:bg-slate-900 rounded-[3rem] w-full max-w-xl shadow-2xl overflow-hidden border border-white/10 flex flex-col">
-                  <div className="px-10 py-8 border-b dark:border-slate-800 flex justify-between items-center">
+                  <div className="px-10 py-8 border-b dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
                       <div>
                           <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3">
                               <IconSparkles className="w-6 h-6 text-indigo-600" />
                               Review Ledger Sync
                           </h3>
-                          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Found {previewData.rows.length} pending updates</p>
+                          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Matched {previewData.rows.length} records for update</p>
                       </div>
                       <button onClick={() => setPreviewData(null)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors"><IconX className="w-6 h-6" /></button>
                   </div>
                   <div className="flex-1 overflow-y-auto max-h-[400px] p-10 space-y-4 no-scrollbar">
                       {previewData.rows.map((row, i) => (
-                          <div key={i} className="p-5 bg-slate-50 dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 flex justify-between items-center group">
-                              <div>
+                          <div key={i} className="p-5 bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 flex justify-between items-center group shadow-sm">
+                              <div className="space-y-1">
                                   <h4 className="font-black text-slate-900 dark:text-white text-sm">{row.name}</h4>
                                   <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">{row.phone}</p>
+                                  <div className="flex items-center gap-1.5 pt-1">
+                                      <div className="p-1 bg-indigo-50 dark:bg-indigo-900/40 rounded text-indigo-600 dark:text-indigo-300">
+                                          <IconUser className="w-2.5 h-2.5" />
+                                      </div>
+                                      <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                                          Source Agent: {row.agentName}
+                                      </span>
+                                  </div>
                               </div>
                               <div className="text-right">
                                   <div className="text-sm font-black text-emerald-600">+{row.delta || row.referrals} Leads</div>
@@ -210,9 +246,9 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
                           </div>
                       ))}
                   </div>
-                  <div className="p-10 border-t dark:border-slate-800 flex gap-4">
-                      <button onClick={() => setPreviewData(null)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-black rounded-2xl text-xs uppercase tracking-widest transition-all">Cancel</button>
-                      <button onClick={confirmSync} className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 transition-all">Confirm & Sync Ledger</button>
+                  <div className="p-10 border-t dark:border-slate-800 flex gap-4 bg-slate-50/50 dark:bg-slate-800/30">
+                      <button onClick={() => setPreviewData(null)} className="flex-1 py-4 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-black rounded-2xl text-xs uppercase tracking-widest transition-all border border-slate-200 dark:border-slate-700">Cancel</button>
+                      <button onClick={confirmSync} className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 transition-all">Confirm & Apply</button>
                   </div>
               </div>
           </div>
@@ -249,7 +285,6 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-          {/* New Window */}
           <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-10 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col h-full">
              <h3 className="text-xs font-black text-slate-900 dark:text-white mb-8 uppercase tracking-widest flex items-center gap-4"><IconPlus className="w-5 h-5 text-indigo-500" /> New Management Window</h3>
              <div className="space-y-8 flex-1">
@@ -265,8 +300,7 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
              </div>
           </div>
 
-          {/* Active Windows */}
-          <div className="space-y-6">
+          <div className="space-y-4">
               <div className="flex justify-between items-center px-2">
                  <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-4"><IconCycle className="w-5 h-5 text-indigo-500" /> Active Windows</h3>
               </div>
@@ -297,7 +331,6 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
           </div>
       </div>
 
-      {/* Referral Sync Center */}
       <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-10 border border-slate-100 dark:border-slate-800 shadow-xl space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-50 dark:border-slate-800 pb-8">
              <div>
@@ -322,7 +355,7 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
                         <input type="file" accept=".csv" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileUpload} />
                         <div className="w-12 h-12 bg-white dark:bg-slate-800 text-indigo-600 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm"><IconDownload className="w-6 h-6" /></div>
                         <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tighter mb-1">Batch Report Intake</h4>
-                        <p className="text-[9px] text-slate-500 font-bold max-w-[200px]">Drop CSV spreadsheets to match and sync thousands of partner referrals at once.</p>
+                        <p className="text-[9px] text-slate-500 font-bold max-w-[200px]">Drop CSV spreadsheets with 'Name', 'Phone', and 'Referrals' columns.</p>
                       </div>
                    </div>
 
@@ -440,7 +473,7 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
                                       <div className="mt-2 space-y-2 animate-in slide-in-from-top-2 duration-300">
                                           <div className="flex justify-between items-center px-1 mb-2">
                                               <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.1em]">Ledger History</span>
-                                              <span className="text-[8px] font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">TEST DATA AUDITABLE</span>
+                                              <span className="text-[8px] font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">AUDITABLE</span>
                                           </div>
                                           <div className="space-y-1.5 max-h-[150px] overflow-y-auto no-scrollbar pr-1">
                                               {appt.referralHistory?.slice().reverse().map((entry: ReferralHistoryEntry) => (
@@ -466,11 +499,6 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
                                </div>
                             );
                          })}
-                         {onboardedList.length === 0 && (
-                             <div className="col-span-full py-16 text-center text-slate-400 font-bold italic bg-slate-50 dark:bg-slate-950 rounded-[2.5rem] border-2 border-dashed border-slate-100 dark:border-slate-800">
-                                No matching onboarded clients found in history.
-                             </div>
-                         )}
                       </div>
                    </div>
                 </>

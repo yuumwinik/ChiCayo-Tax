@@ -74,9 +74,9 @@ export default function App() {
     try {
         const [{ data: users }, { data: appointments }, { data: cycles }, { data: logs }, { data: incentives }, { data: rules }, { data: settings }] = await Promise.all([
             supabase.from('users').select('*'), 
-            supabase.from('appointments').select('*'), 
+            supabase.from('appointments').select('*').order('scheduled_at', { ascending: false }), 
             supabase.from('pay_cycles').select('*'),
-            supabase.from('activity_logs').select('*'), 
+            supabase.from('activity_logs').select('*').order('timestamp', { ascending: false }).limit(100), 
             supabase.from('incentives').select('*'), 
             supabase.from('incentive_rules').select('*'),
             supabase.from('settings').select('*').eq('id', 'global').maybeSingle()
@@ -192,7 +192,7 @@ export default function App() {
 
               if (delta > 0) {
                   const incentiveId = generateId();
-                  const historyId = generateId();
+                  const historyId = generateId(); // Patch: Explicit history ID for tracking
                   const updatedHistory: ReferralHistoryEntry[] = [...(appt.referralHistory || []), { id: historyId, date: row.date || now, count: delta, incentiveId }];
                   
                   await supabase.from('appointments').update({
@@ -301,26 +301,6 @@ export default function App() {
 
       refreshData();
   };
-
-  useEffect(() => {
-    if (!user || isAdmin) return;
-    const recentRefs = allAppointments.filter(a => {
-        if (a.userId !== user.id || !a.lastReferralAt) return false;
-        const last = new Date(a.lastReferralAt).getTime();
-        const now = Date.now();
-        const diffSecs = (now - last) / 1000;
-        return diffSecs < 10;
-    });
-
-    if (recentRefs.length > 0) {
-        const target = recentRefs[0];
-        setReferralAlert({
-            clientName: target.name,
-            count: target.referralCount || 0,
-            totalCents: (target.referralCount || 0) * referralCommissionRate
-        });
-    }
-  }, [allAppointments, user, isAdmin, referralCommissionRate]);
 
   const handleSaveAppointment = async (data: any) => {
     if (!user) return;
