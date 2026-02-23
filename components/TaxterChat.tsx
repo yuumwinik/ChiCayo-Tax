@@ -230,8 +230,9 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
 
     try {
       const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+      console.log('[Taxter] API Key present:', !!apiKey, '| Length:', apiKey?.length ?? 0);
       if (!apiKey) {
-        throw new Error("GROQ API Key is missing from environment variables.");
+        throw new Error("GROQ_MISSING");
       }
       const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
 
@@ -272,11 +273,17 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     } catch (e: any) {
       console.error("AI Error Details:", e);
       const msg = e?.message || "Internal processing error";
-      const isMissingKey = msg.includes("API Key is missing") || msg.includes("API key not found");
+      const isMissingKey = msg === 'GROQ_MISSING' || msg.includes("API key not found") || msg.includes("GROQ_MISSING");
+      const isAuthError = msg.includes("401") || msg.includes("invalid_api_key") || msg.includes("Unauthorized");
 
-      const userFriendlyMsg = isMissingKey
-        ? "Your GROQ API Key is missing. Please restart your development server (npm run dev) to load the .env changes."
-        : `AI Error: ${msg}`;
+      let userFriendlyMsg: string;
+      if (isMissingKey) {
+        userFriendlyMsg = "⚙️ AI Unavailable: The API key is not configured. Please contact your administrator to set up the VITE_GROQ_API_KEY in the deployment settings.";
+      } else if (isAuthError) {
+        userFriendlyMsg = "🔑 AI Auth Error: The API key is invalid or expired. Please update it in your Vercel Environment Variables.";
+      } else {
+        userFriendlyMsg = `Taxter encountered an error: ${msg}. Please try again.`;
+      }
 
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: userFriendlyMsg }]);
     } finally { setIsTyping(false); }
