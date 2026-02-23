@@ -1,7 +1,7 @@
 {
   "name": "chicayo-tax",
   "version": "1.0.2",
-  "description": "ChiCayo Tax Appointment Tracker",
+  "description": "Community Tax Appointment Tracker",
   "main": "electron.js",
   "scripts": {
     "dev": "vite",
@@ -11,9 +11,8 @@
     "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
-    "@google/genai": "^0.2.0",
-    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.39.0",
+    "groq-sdk": "^0.37.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-error-boundary": "^6.1.0",
@@ -33,7 +32,7 @@
   },
   "build": {
     "appId": "com.chicayo.tax",
-    "productName": "ChiCayo Tax",
+    "productName": "Community Tax",
     "files": [
       "dist/**/*",
       "electron.js"

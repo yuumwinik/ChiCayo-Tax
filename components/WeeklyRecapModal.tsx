@@ -65,7 +65,7 @@ export const WeeklyRecapModal: React.FC<WeeklyRecapModalProps> = ({
                         </div>
                     </div>
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-3xl text-sm font-medium text-slate-600 dark:text-slate-300 italic">
-                        "Another week of massive growth. Your hustle is the engine of ChiCayo Tax."
+                        "Another week of massive growth. Your hustle is the engine of Community Tax."
                     </div>
                 </div>
             )

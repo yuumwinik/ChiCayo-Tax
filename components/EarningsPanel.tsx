@@ -72,7 +72,7 @@ export const EarningsPanel: React.FC<EarningsPanelProps> = ({
                      <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl transform translate-x-10 -translate-y-10 group-hover:translate-x-8 transition-transform duration-700"></div>
                      <div className="relative z-10 flex flex-col justify-between h-full text-white">
                         <div className="flex justify-between items-start">
-                           <div className="flex items-center gap-2 opacity-90"><div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm"><IconLogo className="w-5 h-5 text-white" /></div><span className="font-bold tracking-wide text-sm">ChiCayo Card</span></div>
+                           <div className="flex items-center gap-2 opacity-90"><div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm"><IconLogo className="w-5 h-5 text-white" /></div><span className="font-bold tracking-wide text-sm">Community Tax Card</span></div>
                            <div className="text-[10px] font-mono opacity-60 tracking-widest uppercase">Lifetime Access</div>
                         </div>
                         <div className="my-auto">

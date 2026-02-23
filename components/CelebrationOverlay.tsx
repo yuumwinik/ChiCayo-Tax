@@ -69,8 +69,8 @@ export const CelebrationOverlay: React.FC<CelebrationOverlayProps> = ({ type, on
                 <div className={`p-1 bg-gradient-to-br ${config.color} rounded-[4rem] shadow-2xl`}>
                     <div className="bg-white dark:bg-slate-900 rounded-[3.8rem] p-12 text-center relative">
                         <button
-                            onClick={onClose}
-                            className="absolute top-8 right-8 p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); onClose(); }}
+                            className="absolute top-8 right-8 z-50 p-2 text-slate-400 hover:text-rose-500 transition-colors pointer-events-auto hover:bg-slate-100 rounded-full"
                         >
                             <IconX className="w-6 h-6" />
                         </button>

@@ -8,7 +8,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 900,
-    title: "ChiCayo Tax",
+    title: "Community Tax",
     icon: path.join(__dirname, 'public/favicon.ico'), // Will look for icon here
     webPreferences: {
       nodeIntegration: true,

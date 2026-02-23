@@ -1,13 +1,20 @@
 // Simple date helpers to avoid heavy libraries for this demo
 
 export const formatDate = (isoString: string): string => {
+  if (!isoString) return 'N/A';
   const date = new Date(isoString);
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-  }).format(date);
+  if (isNaN(date.getTime())) return 'Invalid Date';
+
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+    }).format(date);
+  } catch (e) {
+    return 'Invalid Date';
+  }
 };
 
 export const formatCurrency = (cents: number): string => {
@@ -52,8 +59,12 @@ export const generateId = (): string => {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 };
 
-export const getRelativeTime = (isoString: string): { label: string, isPast: boolean } => {
-  const target = new Date(isoString).getTime();
+export const getRelativeTime = (isoString?: string): { label: string, isPast: boolean } => {
+  if (!isoString) return { label: 'TBD', isPast: false };
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return { label: 'TBD', isPast: false };
+
+  const target = d.getTime();
   const now = new Date().getTime();
   const diffInMs = target - now;
   const isPast = diffInMs < 0;

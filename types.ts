@@ -6,9 +6,10 @@ export enum AppointmentStage {
   ONBOARDED = 'ONBOARDED',
   DECLINED = 'DECLINED',
   TRANSFERRED = 'TRANSFERRED',
+  ACTIVATED = 'ACTIVATED',
 }
 
-export type View = 'dashboard' | 'calendar' | 'onboarded' | 'earnings-full' | 'admin-dashboard' | 'profile' | 'user-analytics';
+export type View = 'dashboard' | 'calendar' | 'onboarded' | 'earnings-full' | 'admin-dashboard' | 'profile' | 'user-analytics' | 'education';
 export type UserRole = 'agent' | 'admin';
 export type AdminView = 'overview' | 'deepdive' | 'cycles' | 'auditlog' | 'referral-wins';
 export type AvatarId = 'initial' | 'robot' | 'alien' | 'ghost' | 'fire' | 'zap' | 'crown' | 'star' | 'smile';
@@ -80,6 +81,10 @@ export interface Appointment {
   referralHistory?: ReferralHistoryEntry[];
   nurtureDate?: string;
   onboardedAt?: string;
+  activatedAt?: string;
+  originalUserId?: string;
+  originalOnboardType?: 'self' | 'transfer';
+  originalAeName?: string;
 }
 
 export interface Incentive {
@@ -155,6 +160,7 @@ export const STAGE_LABELS: Record<AppointmentStage, string> = {
   [AppointmentStage.ONBOARDED]: 'Onboarded',
   [AppointmentStage.DECLINED]: 'Declined',
   [AppointmentStage.TRANSFERRED]: 'Transferred',
+  [AppointmentStage.ACTIVATED]: 'Activated',
 };
 
 export const STAGE_COLORS: Record<AppointmentStage, string> = {
@@ -164,4 +170,5 @@ export const STAGE_COLORS: Record<AppointmentStage, string> = {
   [AppointmentStage.ONBOARDED]: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
   [AppointmentStage.DECLINED]: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700',
   [AppointmentStage.TRANSFERRED]: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+  [AppointmentStage.ACTIVATED]: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-800',
 };

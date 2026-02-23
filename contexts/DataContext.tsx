@@ -14,12 +14,14 @@ interface DataContextType {
     commissionRate: number;
     selfCommissionRate: number;
     referralCommissionRate: number;
+    commissionActivation: number;
     refreshData: () => Promise<void>;
     loadingData: boolean;
     setCommissionRate: (rate: number) => void;
     setSelfCommissionRate: (rate: number) => void;
     setReferralCommissionRate: (rate: number) => void;
-    handleUpdateMasterCommissions: (standard: number, self: number, referral: number) => Promise<void>;
+    setCommissionActivation: (rate: number) => void;
+    handleUpdateMasterCommissions: (standard: number, self: number, referral: number, activation: number) => Promise<void>;
     handleImportReferrals: (rows: { name: string, phone: string, referrals: number, date: string }[]) => Promise<void>;
     handleManualReferralUpdate: (clientId: string, newCount: number) => Promise<void>;
     handleDeleteReferralEntry: (clientId: string, entryId: string) => Promise<void>;
@@ -30,6 +32,15 @@ interface DataContextType {
     displayEarnings: { current: EarningWindow | null, history: EarningWindow[], lifetime: number };
     activeCycle: PayCycle | undefined;
     teamCurrentCycleTotal: number;
+    performanceStats: {
+        agentStats: Record<string, {
+            onboards: number;
+            activations: number;
+            totalReferrals: number;
+            ratio: string;
+            avgDaysToActivate: string;
+        }>;
+    };
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -50,6 +61,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [commissionRate, setCommissionRate] = useState(200);
     const [selfCommissionRate, setSelfCommissionRate] = useState(300);
     const [referralCommissionRate, setReferralCommissionRate] = useState(200);
+    const [commissionActivation, setCommissionActivation] = useState(1000);
 
     const refreshData = useCallback(async () => {
         // Ideally we might check if user is logged in, but some public data might be needed (rare here)
@@ -100,19 +112,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     referralCount: a.referral_count || 0,
                     lastReferralAt: a.last_referral_at,
                     referralHistory: (a.referral_history || []) as ReferralHistoryEntry[],
-                    onboardedAt: a.onboarded_at
+                    onboardedAt: a.onboarded_at,
+                    activatedAt: a.activated_at,
+                    originalUserId: a.original_user_id,
+                    originalOnboardType: a.original_onboard_type,
+                    originalAeName: a.original_ae_name
                 })));
             }
 
             if (cycles) setPayCycles(cycles.map(c => ({ ...c, startDate: c.start_date, endDate: c.end_date })));
             if (logs) setActivityLogs(logs.map(l => ({ ...l, userId: l.user_id, userName: l.user_name, relatedId: l.related_id })));
-            if (incentives) setAllIncentives(incentives.map(i => ({ ...i, userId: i.user_id, amountCents: i.amount_cents, appliedCycleId: i.applied_cycle_id, createdAt: i.created_at })));
+            if (incentives) setAllIncentives(incentives.map(i => ({ ...i, userId: i.user_id, amountCents: i.amount_cents, appliedCycleId: i.applied_cycle_id, createdAt: i.created_at, relatedAppointmentId: i.related_appointment_id, ruleId: i.rule_id })));
             if (rules) setAllIncentiveRules(rules.map(r => ({ ...r, userId: r.user_id, type: r.type, valueCents: r.value_cents, startTime: r.start_time, endTime: r.end_time, targetCount: r.target_count, currentCount: r.current_count, isActive: r.is_active, createdAt: r.created_at })));
 
             if (settings) {
                 setCommissionRate(settings.commission_standard);
                 setSelfCommissionRate(settings.commission_self);
                 setReferralCommissionRate(settings.commission_referral || 200);
+                setCommissionActivation(settings.commission_activation || 1000);
             }
         } catch (e) {
             console.error("Data fetch error:", e);
@@ -127,13 +144,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshData();
     }, [refreshData, user]); // Refetch when user changes (e.g. login)
 
-    const handleUpdateMasterCommissions = async (standard: number, self: number, referral: number) => {
+    const handleUpdateMasterCommissions = async (standard: number, self: number, referral: number, activation: number) => {
         if (user?.role !== 'admin') return;
         const { error } = await supabase.from('settings').upsert({
             id: 'global',
             commission_standard: standard,
             commission_self: self,
             commission_referral: referral,
+            commission_activation: activation,
             updated_at: new Date().toISOString()
         });
         if (error) { alert(`Sync Error: ${error.message}`); return; }
@@ -141,6 +159,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCommissionRate(standard);
         setSelfCommissionRate(self);
         setReferralCommissionRate(referral);
+        setCommissionActivation(activation); // Added this line
         await refreshData();
     };
 
@@ -289,6 +308,45 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await refreshData();
     };
 
+    const processOnboardingIncentives = async (userId: string, appointmentId: string) => {
+        const now = new Date();
+        const nowISO = now.toISOString();
+        let bonus = 0;
+        const newIncentives = [];
+
+        try {
+            for (const rule of allIncentiveRules.filter(r => r.isActive)) {
+                const isTargeted = rule.userId === 'team' || rule.userId === userId;
+                const isTimed = (!rule.startTime || now >= new Date(rule.startTime)) && (!rule.endTime || now <= new Date(rule.endTime));
+                const hasCount = rule.targetCount === undefined || (rule.currentCount || 0) < rule.targetCount;
+
+                if (isTargeted && isTimed && hasCount) {
+                    bonus += rule.valueCents;
+                    newIncentives.push({
+                        id: generateId(),
+                        user_id: userId,
+                        amount_cents: rule.valueCents,
+                        label: rule.label,
+                        applied_cycle_id: activeCycle?.id || null,
+                        created_at: nowISO,
+                        rule_id: rule.id,
+                        related_appointment_id: appointmentId
+                    });
+                    await supabase.from('incentive_rules').update({ current_count: (rule.currentCount || 0) + 1 }).eq('id', rule.id);
+                }
+            }
+
+            if (newIncentives.length > 0) {
+                const { error } = await supabase.from('incentives').insert(newIncentives);
+                if (error) console.error("Incentive insert error:", error);
+            }
+        } catch (err) {
+            console.error("Error processing incentives:", err);
+        }
+
+        return bonus;
+    };
+
     const handleSaveAppointment = async (data: any) => {
         if (!user) return;
         const originalAppt = data.id ? allAppointments.find(a => a.id === data.id) : null;
@@ -299,20 +357,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const firstAgent = allUsers.find(u => u.role !== 'admin');
             finalUserId = firstAgent?.id || user.id;
         }
+
         const agent = allUsers.find(u => u.id === finalUserId);
         const isSelf = data.aeName && agent && data.aeName === agent.name;
         const baseRate = isSelf ? selfCommissionRate : commissionRate;
-        let bonus = 0; const now = new Date(); const newIncentives = [];
+        const now = new Date();
 
-        for (const rule of allIncentiveRules.filter(r => r.isActive)) {
-            const isTargeted = rule.userId === 'team' || rule.userId === finalUserId;
-            const isTimed = (!rule.startTime || now >= new Date(rule.startTime)) && (!rule.endTime || now <= new Date(rule.endTime));
-            const hasCount = rule.targetCount === undefined || (rule.currentCount || 0) < rule.targetCount;
-            if (isTargeted && isTimed && hasCount && data.stage === AppointmentStage.ONBOARDED) {
-                bonus += rule.valueCents;
-                newIncentives.push({ id: generateId(), user_id: finalUserId, amount_cents: rule.valueCents, label: rule.label, applied_cycle_id: activeCycle?.id, created_at: now.toISOString(), rule_id: rule.id });
-                await supabase.from('incentive_rules').update({ current_count: (rule.currentCount || 0) + 1 }).eq('id', rule.id);
-            }
+        let bonus = 0;
+        if (data.stage === AppointmentStage.ONBOARDED && !originalAppt?.onboardedAt) {
+            const id = data.id || generateId();
+            bonus = await processOnboardingIncentives(finalUserId, id);
         }
 
         if (originalAppt) {
@@ -335,19 +389,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             user_id: finalUserId,
             type: data.type || 'appointment',
             ae_name: data.aeName,
-            earned_amount: data.stage === AppointmentStage.ONBOARDED ? (baseRate + bonus) : 0,
+            earned_amount: data.stage === AppointmentStage.ONBOARDED ? baseRate : (data.stage === AppointmentStage.ACTIVATED ? commissionActivation : 0),
             referral_count: data.referralCount || 0,
-            onboarded_at: (data.stage === AppointmentStage.ONBOARDED && !originalAppt?.onboardedAt) ? new Date().toISOString() : originalAppt?.onboardedAt
+            onboarded_at: (data.stage === AppointmentStage.ONBOARDED && !originalAppt?.onboardedAt) ? now.toISOString() : originalAppt?.onboardedAt,
+            activated_at: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? now.toISOString() : originalAppt?.activatedAt,
+            original_user_id: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt && originalAppt?.userId !== finalUserId) ? originalAppt?.userId : (originalAppt?.originalUserId || null),
+            original_onboard_type: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? (originalAppt?.aeName === (allUsers.find(u => u.id === originalAppt?.userId)?.name) ? 'self' : 'transfer') : (originalAppt?.originalOnboardType || null),
+            original_ae_name: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? (originalAppt?.aeName || null) : (originalAppt?.originalAeName || null)
         };
-        if (data.id) await supabase.from('appointments').update(dbData).eq('id', data.id);
-        else await supabase.from('appointments').insert({ ...dbData, id: generateId(), created_at: new Date().toISOString() });
 
-        if (newIncentives.length) await supabase.from('incentives').insert(newIncentives);
-
-        await refreshData();
+        try {
+            if (data.id) {
+                const { error } = await supabase.from('appointments').update(dbData).eq('id', data.id);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase.from('appointments').insert({ ...dbData, id: data.id || generateId(), created_at: now.toISOString() });
+                if (error) throw error;
+            }
+            await refreshData();
+        } catch (err: any) {
+            console.error("Error saving appointment:", err);
+            alert(`Failed to save appointment: ${err.message || 'Unknown error'}`);
+        }
     };
 
     const handleMoveStage = async (id: string, stage: AppointmentStage, isManualSelfOnboard: boolean = false) => {
+        console.log(`[DB_UPDATE] Moving appointment ${id} to stage: ${stage} (manual: ${isManualSelfOnboard})`);
         const appt = allAppointments.find(a => a.id === id);
         if (!appt) return;
 
@@ -359,38 +426,65 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             notes: appt.notes
         });
 
-        if (stage === AppointmentStage.ONBOARDED) {
-            const agent = allUsers.find(u => u.id === appt.userId);
-            const now = new Date().toISOString();
+        try {
+            if (stage === AppointmentStage.ONBOARDED) {
+                const agent = allUsers.find(u => u.id === appt.userId);
+                const now = new Date().toISOString();
 
-            if (isManualSelfOnboard) {
-                await supabase.from('appointments').update({
+                let finalEarnedAmount = 0;
+                let finalAeName = appt.aeName;
+
+                if (isManualSelfOnboard) {
+                    finalEarnedAmount = selfCommissionRate;
+                    finalAeName = agent?.name || user?.name || 'Self';
+                } else {
+                    const isSelf = appt.aeName && agent && appt.aeName === agent.name;
+                    finalEarnedAmount = isSelf ? selfCommissionRate : commissionRate;
+                }
+
+                await processOnboardingIncentives(appt.userId, id);
+
+                const { error } = await supabase.from('appointments').update({
                     stage: AppointmentStage.ONBOARDED,
-                    earned_amount: selfCommissionRate,
-                    ae_name: agent?.name,
+                    earned_amount: finalEarnedAmount,
+                    ae_name: finalAeName,
                     onboarded_at: now
                 }).eq('id', id);
+
+                if (error) throw error;
+                await refreshData();
+                return;
+            }
+            if (stage === AppointmentStage.ACTIVATED) {
+                const now = new Date().toISOString();
+                const { error } = await supabase.from('appointments').update({
+                    stage: AppointmentStage.ACTIVATED,
+                    earned_amount: commissionActivation,
+                    activated_at: now,
+                    original_user_id: appt.originalUserId || appt.userId,
+                    original_onboard_type: appt.originalOnboardType || (appt.aeName === (allUsers.find(u => u.id === appt.userId)?.name) ? 'self' : 'transfer'),
+                    original_ae_name: appt.originalAeName || appt.aeName || null
+                }).eq('id', id);
+                if (error) throw error;
+                await refreshData();
+                return;
+            }
+            if (stage === AppointmentStage.DECLINED) {
+                const nurtureDate = new Date();
+                nurtureDate.setDate(nurtureDate.getDate() + 30);
+                const { error } = await supabase.from('appointments').update({ stage, earned_amount: 0, nurture_date: nurtureDate.toISOString(), onboarded_at: null }).eq('id', id);
+                if (error) throw error;
                 await refreshData();
                 return;
             }
 
-            if (appt.stage === AppointmentStage.TRANSFERRED) {
-                const isSelf = appt.aeName === agent?.name;
-                const baseRate = isSelf ? selfCommissionRate : commissionRate;
-                await supabase.from('appointments').update({ stage: AppointmentStage.ONBOARDED, earned_amount: baseRate, onboarded_at: now }).eq('id', id);
-                await refreshData();
-            }
-            return;
-        }
-        if (stage === AppointmentStage.DECLINED) {
-            const nurtureDate = new Date();
-            nurtureDate.setDate(nurtureDate.getDate() + 30);
-            await supabase.from('appointments').update({ stage, earned_amount: 0, nurture_date: nurtureDate.toISOString(), onboarded_at: null }).eq('id', id);
+            const { error } = await supabase.from('appointments').update({ stage, earned_amount: 0, onboarded_at: null }).eq('id', id);
+            if (error) throw error;
             await refreshData();
-            return;
+        } catch (err: any) {
+            console.error("Error moving stage:", err);
+            alert(`Failed to move stage: ${err.message || 'Unknown error'}`);
         }
-
-        await supabase.from('appointments').update({ stage, earned_amount: 0, onboarded_at: null }).eq('id', id); await refreshData();
     };
 
     const undoLastAction = async () => {
@@ -472,6 +566,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }, 0) + allIncentives.filter(i => i.appliedCycleId === activeCycle.id).reduce((s, i) => s + i.amountCents, 0);
     }, [allAppointments, activeCycle, referralCommissionRate]);
 
+    const performanceStats = useMemo(() => {
+        const stats: Record<string, { onboards: number; activations: number; totalReferrals: number; ratio: string; avgDaysToActivate: string }> = {};
+
+        allUsers.forEach(u => {
+            const userAppts = allAppointments.filter(a => a.userId === u.id);
+            const onboards = userAppts.filter(a => !!a.onboardedAt).length;
+            const activations = userAppts.filter(a => a.stage === AppointmentStage.ACTIVATED).length;
+            const totalReferrals = userAppts.reduce((sum, a) => sum + (a.referralCount || 0), 0);
+
+            const ratio = onboards > 0 ? (totalReferrals / onboards).toFixed(1) : '0';
+
+            const activationTimes = userAppts
+                .filter(a => a.onboardedAt && a.activatedAt)
+                .map(a => {
+                    const diff = new Date(a.activatedAt!).getTime() - new Date(a.onboardedAt!).getTime();
+                    return diff / (1000 * 60 * 60 * 24);
+                });
+            const avgDays = activationTimes.length > 0
+                ? (activationTimes.reduce((s, t) => s + t, 0) / activationTimes.length).toFixed(1)
+                : 'N/A';
+
+            stats[u.id] = { onboards, activations, totalReferrals, ratio, avgDaysToActivate: avgDays };
+        });
+
+        return { agentStats: stats };
+    }, [allAppointments, allUsers]);
+
     return (
         <DataContext.Provider value={{
             allAppointments,
@@ -483,11 +604,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             commissionRate,
             selfCommissionRate,
             referralCommissionRate,
+            commissionActivation,
             refreshData,
             loadingData,
             setCommissionRate,
             setSelfCommissionRate,
             setReferralCommissionRate,
+            setCommissionActivation,
             handleUpdateMasterCommissions,
             handleImportReferrals,
             handleManualReferralUpdate,
@@ -498,7 +621,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             undoLastAction,
             displayEarnings,
             activeCycle,
-            teamCurrentCycleTotal
+            teamCurrentCycleTotal,
+            performanceStats
         }}>
             {children}
         </DataContext.Provider>

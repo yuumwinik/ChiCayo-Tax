@@ -131,10 +131,15 @@ export const ProtocolModal: React.FC<ProtocolModalProps> = ({ type, value, appNa
     </div>
   ) : null;
 
+  if (!isOpen) return children(handleTrigger);
+
+  const target = typeof document !== 'undefined' ? document.body : null;
+  if (!target) return children(handleTrigger);
+
   return (
     <>
       {children(handleTrigger)}
-      {isOpen && createPortal(modalContent, document.body)}
+      {createPortal(modalContent, target)}
     </>
   );
 };

@@ -2,9 +2,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { IconBot, IconSend, IconX, IconCopy, IconCheck, IconExternalLink, IconArrowRight, IconSparkles } from './Icons';
 import { Appointment, EarningWindow, PayCycle, User, View, AppointmentStage } from '../types';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Groq } from "groq-sdk";
 import { formatCurrency } from '../utils/dateUtils';
 import { calculateSuccessProbability, generateCoachingInsights } from '../utils/analyticsUtils';
+import { TRAINING_CONTENT } from '../utils/trainingData';
 
 interface TaxterChatProps {
   user: User;
@@ -17,6 +18,7 @@ interface TaxterChatProps {
   activeCycle?: PayCycle;
   commissionRate: number;
   selfCommissionRate: number;
+  referralCommissionRate: number;
 }
 
 interface Message {
@@ -88,7 +90,7 @@ const RichMessageRenderer = ({ text, onOpenAppointment, onNavigate }: { text: st
 };
 
 export const TaxterChat: React.FC<TaxterChatProps> = ({
-  user, allAppointments, allEarnings, payCycles, allUsers, onOpenAppointment, onNavigate, activeCycle, commissionRate, selfCommissionRate
+  user, allAppointments, allEarnings, payCycles, allUsers, onOpenAppointment, onNavigate, activeCycle, commissionRate, selfCommissionRate, referralCommissionRate
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -98,7 +100,7 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       role: 'model',
       text: user.role === 'admin'
         ? `Hello Admin! I'm Taxter. I can analyze team-wide metrics and visualize revenue across cycles. How can I assist you?`
-        : `Hi ${user.name.split(' ')[0]}! I'm Taxter. I track your leads, your commissions, and your performance. Ask me anything!`
+        : `Hi ${(user?.name || 'Agent').split(' ')[0]}! I'm Taxter. I track your leads, your commissions, and your performance. Ask me anything!`
     }
   ]);
   const [isTyping, setIsTyping] = useState(false);
@@ -125,7 +127,11 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       const e = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
       relevantAppointments.forEach(a => {
         if (a.stage === AppointmentStage.ONBOARDED) {
-          const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
+          const rawDate = a.onboardedAt || a.scheduledAt;
+          if (!rawDate) return;
+          const d = new Date(rawDate).getTime();
+          if (isNaN(d)) return;
+
           if (d >= s && d <= e) {
             const agent = allUsers.find(u => u.id === a.userId);
             const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
@@ -143,14 +149,17 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       .slice(0, 12)
       .map(c => {
         const cycleAppts = relevantAppointments.filter(a => {
-          const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
+          const rawDate = a.onboardedAt || a.scheduledAt;
+          if (!rawDate) return false;
+          const d = new Date(rawDate).getTime();
+          if (isNaN(d)) return false;
           return d >= new Date(c.startDate).getTime() && d <= new Date(c.endDate).setHours(23, 59, 59, 999);
         });
         const cycleWins = cycleAppts.filter(a => a.stage === AppointmentStage.ONBOARDED);
         const cycleRev = cycleWins.reduce((sum, a) => {
           const agent = allUsers.find(u => u.id === a.userId);
           const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
-          return sum + (a.earnedAmount || defaultRate) + (a.referralCount || 0) * 200;
+          return sum + (a.earnedAmount || defaultRate) + (a.referralCount || 0) * referralCommissionRate;
         }, 0);
         return {
           id: c.id,
@@ -173,7 +182,7 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       const agent = allUsers.find(u => u.id === a.userId);
       const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
       return sum + (a.earnedAmount || defaultRate);
-    }, 0) + lifetimeOnboarded.reduce((sum, a) => sum + (a.referralCount || 0) * (200), 0);
+    }, 0) + lifetimeOnboarded.reduce((sum, a) => sum + (a.referralCount || 0) * referralCommissionRate, 0);
 
     const context = {
       meta: {
@@ -197,7 +206,11 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
         },
         historicalPerformance: history
       },
-      recentAppointments: relevantAppointments.sort((a, b) => new Date(b.onboardedAt || b.scheduledAt).getTime() - new Date(a.onboardedAt || a.scheduledAt).getTime()).slice(0, 50).map(a => ({
+      recentAppointments: relevantAppointments.sort((a, b) => {
+        const da = new Date(a.onboardedAt || a.scheduledAt || 0).getTime();
+        const db = new Date(b.onboardedAt || b.scheduledAt || 0).getTime();
+        return db - da;
+      }).slice(0, 50).map(a => ({
         name: a.name, time: a.onboardedAt || a.scheduledAt, stage: a.stage, ae: a.aeName, amt: formatCurrency(a.earnedAmount || 0)
       })),
       teamMembers: user.role === 'admin' ? allUsers.filter(u => u.role !== 'admin').map(u => ({
@@ -216,42 +229,56 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     setIsTyping(true);
 
     try {
-      const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
-      const genAI = new GoogleGenerativeAI(apiKey);
+      const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+      if (!apiKey) {
+        throw new Error("GROQ API Key is missing from environment variables.");
+      }
+      const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
 
       const coaching = generateCoachingInsights(allAppointments);
 
       const chatHistory = messages.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Taxter'}: ${m.text}`).join('\n');
 
-      const systemPrompt = `You are Taxter, the proactive performance coach and statistical AI for ChiCayo Tax.
+      const systemPrompt = `You are Taxter, the proactive performance coach and statistical AI for Community Tax.
         GOAL: Provide instant data-driven insights and suggest high-value habits.
         
         CONTEXT AWARENESS:
         - Recent Conversation: ${chatHistory}
         - Coaching Insights: ${coaching.join(' | ')}
         - Last 12 Cycles: ${prepareContextData()}
+        - PROD KNOWLEDGE & SCRIPTS: ${JSON.stringify(TRAINING_CONTENT)}
 
         CAPABILITIES:
         - Predict 'Success Probability' using peak time data. 
         - Track daily totals and historical growth.
         - Give habit advice like "Follow up faster on transfers" based on Coaching Insights.
+        - COACHING: Help agents with "What to say" based on the provided SCRIPTS and PRODUCT KNOWLEDGE. Focus on IRS debt > $7k.
 
         FORMATTING: Use [[STAT:Label:Value]] for key metrics. Use [[NAV:View]] or [[OPEN_APPT:ID:Name]] to assist navigation.
         STYLE: Professional, encouraging, and razor-sharp with numbers.`;
 
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-2.0-flash',
-        systemInstruction: systemPrompt,
+      const completion = await groq.chat.completions.create({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: text }
+        ],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.7,
       });
 
-      const result = await model.generateContent(text);
-      const response = result.response;
-      const responseText = response.text();
+      const responseText = completion.choices[0]?.message?.content;
 
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: responseText || "I was unable to calculate that right now." }]);
-    } catch (e) {
-      console.error("AI Error:", e);
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: "I'm having trouble reaching my processing center. Please ensure your API Key is valid." }]);
+    } catch (e: any) {
+      console.error("AI Error Details:", e);
+      const msg = e?.message || "Internal processing error";
+      const isMissingKey = msg.includes("API Key is missing") || msg.includes("API key not found");
+
+      const userFriendlyMsg = isMissingKey
+        ? "Your GROQ API Key is missing. Please restart your development server (npm run dev) to load the .env changes."
+        : `AI Error: ${msg}`;
+
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: userFriendlyMsg }]);
     } finally { setIsTyping(false); }
   };
 

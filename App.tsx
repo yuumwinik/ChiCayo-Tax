@@ -15,7 +15,8 @@ import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 import { TaxterChat } from './components/TaxterChat';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { UserAnalytics } from './components/UserAnalytics';
-import { IconMenu, IconMoon, IconPlus, IconSearch, IconSun, getAvatarIcon, IconTrash, IconTrophy, IconSparkles, IconTransfer, IconActivity, IconX, IconCheck, IconClock } from './components/Icons';
+import { EducationCenter } from './components/EducationCenter';
+import { IconMenu, IconMoon, IconPlus, IconSearch, IconSun, getAvatarIcon, IconTrash, IconTrophy, IconSparkles, IconTransfer, IconActivity, IconX, IconCheck, IconClock, IconAlertCircle, IconAlertTriangle } from './components/Icons';
 import { NotificationPods } from './components/NotificationPods';
 import { calculatePeakTime } from './utils/analyticsUtils';
 import { generateId, formatDate, formatCurrency } from './utils/dateUtils';
@@ -42,6 +43,68 @@ const ErrorFallback = ({ error, resetErrorBoundary }: any) => {
     );
 };
 
+const DeveloperHealthCheck: React.FC<{ activeCycle?: PayCycle; appointments: Appointment[]; hasApiKey: boolean }> = ({ activeCycle, appointments, hasApiKey }) => {
+    const [isVisible, setIsVisible] = useState(false);
+
+    return (
+        <>
+            <button
+                onClick={() => setIsVisible(!isVisible)}
+                className="fixed bottom-24 left-6 z-[110] p-3 rounded-2xl bg-slate-900/50 backdrop-blur-md border border-white/10 text-white/50 hover:text-white transition-all shadow-xl"
+                title="Developer Status"
+            >
+                <IconActivity className="w-5 h-5" />
+            </button>
+            <div className={`fixed bottom-40 left-6 z-[110] transition-all duration-500 origin-bottom-left ${isVisible ? 'scale-100 opacity-100' : 'scale-75 opacity-0 pointer-events-none'}`}>
+                <div className="bg-slate-900/95 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-8 shadow-2xl w-72 space-y-6 text-white">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Dev Mode Monitor</h3>
+                        <button onClick={() => setIsVisible(false)} className="text-white/30 hover:text-white"><IconX className="w-4 h-4" /></button>
+                    </div>
+
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center bg-white/5 p-4 rounded-2xl border border-white/5">
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Active Cycle</span>
+                                <span className="text-[8px] text-slate-500 font-medium">Required for Earnings</span>
+                            </div>
+                            <span className={`text-[10px] px-3 py-1 rounded-lg font-black ${activeCycle ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                                {activeCycle ? 'LIVE' : 'MISSING'}
+                            </span>
+                        </div>
+
+                        <div className="flex justify-between items-center bg-white/5 p-4 rounded-2xl border border-white/5">
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Groq AI API</span>
+                                <span className="text-[8px] text-slate-500 font-medium">VITE_GROQ_API_KEY</span>
+                            </div>
+                            <span className={`text-[10px] px-3 py-1 rounded-lg font-black ${hasApiKey ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                                {hasApiKey ? 'READY' : 'UNSET'}
+                            </span>
+                        </div>
+
+                        <div className="flex justify-between items-center bg-white/5 p-4 rounded-2xl border border-white/5">
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Synced Leads</span>
+                                <span className="text-[8px] text-slate-500 font-medium">Database Count</span>
+                            </div>
+                            <span className="text-xs font-black tabular-nums">{appointments.length}</span>
+                        </div>
+                    </div>
+
+                    {!activeCycle && (
+                        <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                            <p className="text-[10px] text-amber-500 leading-relaxed font-bold">
+                                ⚠️ No active pay cycle detected. "Onboard" and "Failed" buttons may save data but won't show in Cycle Stats.
+                            </p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </>
+    );
+};
+
 const KEYS = { THEME: 'chicayo_dark_mode', LAST_VIEW: 'chicayo_last_view_v3', TICKER: 'chicayo_ticker_visible' };
 
 export default function App() {
@@ -56,18 +119,20 @@ export default function App() {
         commissionRate,
         selfCommissionRate,
         referralCommissionRate,
+        commissionActivation,
         refreshData,
         handleUpdateMasterCommissions,
         handleImportReferrals,
         handleManualReferralUpdate,
         handleDeleteReferralEntry,
         handleSaveAppointment,
-        handleMoveStage: handleMoveStageContext,
+        handleMoveStage: moveStageInContext,
         handleDeleteAppointment,
         undoLastAction,
         displayEarnings,
         activeCycle,
-        teamCurrentCycleTotal
+        teamCurrentCycleTotal,
+        performanceStats
     } = useData();
 
     const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -103,6 +168,13 @@ export default function App() {
 
     const [activeCelebration, setActiveCelebration] = useState<any>(null);
     const [isWeeklyRecapOpen, setIsWeeklyRecapOpen] = useState(false);
+    const [toasts, setToasts] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info' }[]>([]);
+
+    const addToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+        const id = Math.random().toString(36).substring(7);
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+    };
     const [achievements, setAchievements] = useState<Set<string>>(() => {
         const saved = localStorage.getItem('achievements_v1');
         return saved ? new Set(JSON.parse(saved)) : new Set();
@@ -117,7 +189,14 @@ export default function App() {
             setCurrentView(user.role === 'admin' ? 'admin-dashboard' : 'dashboard');
         } else {
             const lastView = sessionStorage.getItem(KEYS.LAST_VIEW) as View;
-            if (lastView) setCurrentView(lastView);
+            if (lastView) {
+                if (lastView as string === 'training') {
+                    setCurrentView('education');
+                    sessionStorage.setItem(KEYS.LAST_VIEW, 'education');
+                } else {
+                    setCurrentView(lastView);
+                }
+            }
         }
     }, [user]);
 
@@ -232,11 +311,17 @@ export default function App() {
     };
 
     const handleSaveApptWrapper = async (data: any) => {
-        await handleSaveAppointment(data);
-        setEditingAppt(null);
+        try {
+            await handleSaveAppointment(data);
+            addToast(`Successfully ${data.id ? 'updated' : 'saved'} record`, 'success');
+            setEditingAppt(null);
+        } catch (err) {
+            addToast(`Error saving: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+        }
     };
 
     const handleMoveStage = async (id: string, stage: AppointmentStage, isManualSelfOnboard: boolean = false) => {
+        console.log(`[DATA] Moving appointment ${id} to stage: ${stage} (manual: ${isManualSelfOnboard})`);
         const appt = allAppointments.find(a => a.id === id); if (!appt) return;
         if (stage === AppointmentStage.RESCHEDULED) { setEditingAppt(appt); setIsRescheduling(true); setIsModalOpen(true); return; }
 
@@ -246,7 +331,12 @@ export default function App() {
             return;
         }
 
-        await handleMoveStageContext(id, stage, isManualSelfOnboard);
+        try {
+            await moveStageInContext(id, stage, isManualSelfOnboard);
+            addToast(`Successfully moved to ${STAGE_LABELS[stage] || stage}`, 'success');
+        } catch (err) {
+            addToast(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+        }
     };
 
     const handleOpenBusinessCard = (appt: Appointment, stack?: Appointment[]) => {
@@ -302,8 +392,11 @@ export default function App() {
     };
 
     if (!user) return <AuthScreen onLogin={async (u) => { setUser(u); refreshData(); }} />;
+    const hasApiKey = !!import.meta.env.VITE_GROQ_API_KEY;
+
     return (
         <div className="h-screen flex bg-slate-50 dark:bg-slate-950 overflow-hidden app-container">
+            <DeveloperHealthCheck activeCycle={activeCycle} appointments={allAppointments} hasApiKey={hasApiKey} />
             {referralAlert && (
                 <div
                     className="fixed inset-0 z-[300] flex items-center justify-center bg-indigo-950/80 backdrop-blur-md animate-in fade-in duration-500 p-6 cursor-pointer"
@@ -351,99 +444,121 @@ export default function App() {
                         onNavigate={(v) => setCurrentView(v)}
                     />
                 )}
-                <header className="h-16 flex items-center justify-between px-6 border-b bg-white/80 dark:bg-slate-950/80 backdrop-blur-md dark:border-slate-800 z-30 sticky top-0">
-                    <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-500"><IconMenu /></button>
-                    <div className="flex-1 max-w-xl mx-4">
+                <header className="h-auto min-h-[4rem] flex flex-wrap md:flex-nowrap items-center justify-between px-4 md:px-6 py-2 md:py-0 border-b bg-white/80 dark:bg-slate-950/80 backdrop-blur-md dark:border-slate-800 z-30 sticky top-0 gap-3">
+                    <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-500 overflow-hidden shrink-0"><IconMenu /></button>
+                    <div className="flex-1 max-w-full md:max-w-xl order-3 md:order-2 w-full md:w-auto">
                         <div className="relative group">
                             <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 group-focus-within:text-indigo-500 transition-colors" />
-                            <input type="text" placeholder="Search Name, Phone, Email, Notes..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-800 rounded-full py-2.5 pl-10 pr-10 text-sm border-none dark:text-white focus:ring-2 focus:ring-indigo-500/20 transition-all" />
+                            <input type="text" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-800 rounded-full py-2 pl-10 pr-10 text-sm border-none dark:text-white focus:ring-2 focus:ring-indigo-500/20 transition-all" />
                             {searchQuery && (<button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-rose-500 transition-colors"><IconX className="w-3 h-3" /></button>)}
                         </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 md:gap-4 order-2 md:order-3 ml-auto">
                         <NotificationPods appointments={allAppointments} onOpenAppointment={(id) => { const a = allAppointments.find(x => x.id === id); if (a) handleOpenBusinessCard(a); }} thresholdMinutes={user.notificationSettings?.thresholdMinutes || 15} />
                         <button onClick={() => setDarkMode(!darkMode)} className="p-2 text-slate-500">{darkMode ? <IconSun /> : <IconMoon />}</button>
                         <div id="wallet-pill" className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-3 py-1.5 rounded-full text-sm font-bold cursor-pointer hover:scale-105 transition-transform" onClick={() => setIsEarningsPanelOpen(true)}>${(displayEarnings.lifetime / 100).toLocaleString()}</div>
-                        <button onClick={() => { setCurrentView('profile'); sessionStorage.setItem(KEYS.LAST_VIEW, 'profile'); }} className="w-8 h-8 rounded-full border-2 border-white dark:border-slate-800 overflow-hidden">{user.avatarId && user.avatarId !== 'initial' ? <div className="bg-indigo-50 dark:bg-indigo-900/50">{getAvatarIcon(user.avatarId)}</div> : <div className="bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs h-full">{user.name.charAt(0).toUpperCase()}</div>}</button>
+                        <button onClick={() => { setCurrentView('profile'); sessionStorage.setItem(KEYS.LAST_VIEW, 'profile'); }} className="w-8 h-8 rounded-full border-2 border-white dark:border-slate-800 overflow-hidden">
+                            {(user?.avatarId && user.avatarId !== 'initial') ? (
+                                <div className="bg-indigo-50 dark:bg-indigo-900/50">{getAvatarIcon(user.avatarId)}</div>
+                            ) : (
+                                <div className="bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs h-full">
+                                    {(user?.name || '?').charAt(0).toUpperCase()}
+                                </div>
+                            )}
+                        </button>
                     </div>
                 </header>
                 <main className="flex-1 overflow-y-auto no-scrollbar relative">
-                    {loadingAuth ? <div className="h-full flex items-center justify-center"><div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div> : currentView === 'profile' ? <ProfileView totalEarnings={displayEarnings.lifetime} totalOnboarded={allAppointments.filter(a => (isAdmin ? true : a.userId === user?.id) && a.stage === AppointmentStage.ONBOARDED).length} onReplayTutorial={() => setForceTutorial(true)} /> : currentView === 'admin-dashboard' ? <AdminDashboard members={allUsers.filter(u => u.role !== 'admin').map(u => ({ id: u.id, name: u.name, role: u.role as any, status: 'Online', onboardedCount: allAppointments.filter(a => a.userId === u.id && a.stage === AppointmentStage.ONBOARDED).length, totalEarnings: (allAppointments.filter(a => a.userId === u.id && a.stage === AppointmentStage.ONBOARDED).reduce((s, a) => s + (a.earnedAmount || 0) + ((a.referralCount || 0) * referralCommissionRate), 0)) + allIncentives.filter(i => i.userId === u.id || i.userId === 'team').reduce((s, i) => s + i.amountCents, 0), lastActive: 'Recently', avatarId: u.avatarId }))} payCycles={payCycles} onAddCycle={(s, e) => supabase.from('pay_cycles').insert({ id: generateId(), start_date: s, end_date: e, status: 'active' }).then(() => refreshData())} onEditCycle={(id, s, e) => supabase.from('pay_cycles').update({ start_date: s, end_date: e }).eq('id', id).then(() => refreshData())} onDeleteCycle={id => supabase.from('pay_cycles').delete().eq('id', id).then(() => refreshData())} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralRate={referralCommissionRate} onUpdateMasterCommissions={handleUpdateMasterCommissions} onLogOnboard={() => setIsCreateModalOpen(true)} appointments={allAppointments} activeCycle={activeCycle} activityLogs={activityLogs} onApplyIncentive={i => supabase.from('incentives').insert({ ...i, id: generateId(), created_at: new Date().toISOString() }).then(() => refreshData())} allUsers={allUsers} lifetimeTeamEarnings={displayEarnings.lifetime} incentiveRules={allIncentiveRules} onDeleteIncentiveRule={id => supabase.from('incentive_rules').delete().eq('id', id).then(() => refreshData())} allIncentives={allIncentives} onImportReferrals={handleImportReferrals} onManualReferral={handleManualReferralUpdate} onDeleteReferral={handleDeleteReferralEntry} /> : currentView === 'user-analytics' ? <div className="p-6 max-w-6xl mx-auto"><UserAnalytics appointments={allAppointments.filter(a => a.userId === user?.id)} allAppointments={allAppointments} allIncentives={allIncentives} earnings={displayEarnings} activeCycle={activeCycle} payCycles={payCycles} currentUserName={user?.name || ''} currentUser={user!} referralRate={referralCommissionRate} /></div> : currentView === 'calendar' ? <div className="p-6 max-w-6xl mx-auto"><CalendarView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, isAdmin ? allAppointments : allAppointments.filter(item => item.userId === user?.id))} userRole={user?.role || 'agent'} users={allUsers} activeCycle={activeCycle} /></div> : currentView === 'onboarded' ? <div className="p-6 max-w-6xl mx-auto"><OnboardedView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} searchQuery={searchQuery} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={(a, stack) => handleOpenBusinessCard(a, stack)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} users={allUsers} payCycles={payCycles} userRole={user?.role || 'agent'} currentWindow={displayEarnings.current} referralRate={referralCommissionRate} /></div> : currentView === 'earnings-full' ? <div className="p-6 max-w-6xl mx-auto"><EarningsFullView history={displayEarnings.history} currentWindow={displayEarnings.current} appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} users={allUsers} userRole={user?.role || 'agent'} currentUserName={user?.name || ''} onDismissCycle={id => supabase.from('users').update({ dismissed_cycle_ids: [...(user?.dismissedCycleIds || []), id] }).eq('id', user?.id).then(() => refreshData())} incentives={allIncentives} referralRate={referralCommissionRate} /></div> : (
-                        <div className="relative p-6 min-h-full">
-                            <div className="sticky top-0 z-20 flex justify-end mb-6 pointer-events-none">
-                                <button
-                                    onClick={() => {
-                                        setEditingAppt(null);
-                                        if (isAdmin) setIsCreateModalOpen(true);
-                                        else setIsModalOpen(true);
-                                    }}
-                                    className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-2xl transition-all active:scale-95 text-sm font-black uppercase tracking-widest animate-in slide-in-from-right-4 duration-500 shadow-indigo-200 dark:shadow-none"
-                                >
-                                    {isAdmin ? <IconSparkles className="w-5 h-5" /> : <IconPlus className="w-5 h-5" />}
-                                    {isAdmin ? 'Log Onboarded Partner' : 'New Appointment'}
-                                </button>
-                            </div>
+                    {loadingAuth ? <div className="h-full flex items-center justify-center"><div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div> : currentView === 'education' ? <EducationCenter /> : currentView === 'profile' ? <ProfileView totalEarnings={displayEarnings.lifetime} totalOnboarded={allAppointments.filter(a => (isAdmin ? true : a.userId === user?.id) && a.stage === AppointmentStage.ONBOARDED).length} onReplayTutorial={() => setForceTutorial(true)} /> : currentView === 'admin-dashboard' ? <AdminDashboard members={allUsers.filter(u => u.role !== 'admin').map(u => ({ id: u.id, name: u.name, role: u.role as any, status: 'Online', onboardedCount: allAppointments.filter(a => a.userId === u.id && a.stage === AppointmentStage.ONBOARDED).length, totalEarnings: (allAppointments.filter(a => a.userId === u.id && a.stage === AppointmentStage.ONBOARDED).reduce((s, a) => s + (a.earnedAmount || 0) + ((a.referralCount || 0) * referralCommissionRate), 0)) + allIncentives.filter(i => (i.userId === u.id || i.userId === 'team') && !(i.relatedAppointmentId && i.label.toLowerCase().includes('ref'))).reduce((s, i) => s + i.amountCents, 0), lastActive: 'Recently', avatarId: u.avatarId }))} payCycles={payCycles} onAddCycle={(s, e) => supabase.from('pay_cycles').insert({ id: generateId(), start_date: s, end_date: e, status: 'active' }).then(() => refreshData())} onEditCycle={(id, s, e) => supabase.from('pay_cycles').update({ start_date: s, end_date: e }).eq('id', id).then(() => refreshData())} onDeleteCycle={id => supabase.from('pay_cycles').delete().eq('id', id).then(() => refreshData())} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralRate={referralCommissionRate} activationRate={commissionActivation} onUpdateMasterCommissions={handleUpdateMasterCommissions} onLogOnboard={() => setIsCreateModalOpen(true)} appointments={allAppointments} activeCycle={activeCycle} activityLogs={activityLogs} onApplyIncentive={i => supabase.from('incentives').insert({ ...i, id: generateId(), created_at: new Date().toISOString() }).then(() => refreshData())} allUsers={allUsers} lifetimeTeamEarnings={displayEarnings.lifetime} incentiveRules={allIncentiveRules} onDeleteIncentiveRule={id => supabase.from('incentive_rules').delete().eq('id', id).then(() => refreshData())} allIncentives={allIncentives} onImportReferrals={handleImportReferrals} onManualReferral={handleManualReferralUpdate} onDeleteReferral={handleDeleteReferralEntry} onViewAppt={handleOpenBusinessCard} performanceStats={performanceStats} />
+                        : currentView === 'user-analytics' ? <div className="p-6 max-w-6xl mx-auto"><UserAnalytics appointments={allAppointments.filter(a => a.userId === user?.id)} allAppointments={allAppointments} allIncentives={allIncentives} earnings={displayEarnings} activeCycle={activeCycle} payCycles={payCycles} currentUserName={user?.name || ''} currentUser={user!} referralRate={referralCommissionRate} onViewAppt={handleOpenBusinessCard} /></div> : currentView === 'calendar' ? <div className="p-6 max-w-6xl mx-auto"><CalendarView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, isAdmin ? allAppointments : allAppointments.filter(item => item.userId === user?.id))} userRole={user?.role || 'agent'} users={allUsers} activeCycle={activeCycle} /></div> : currentView === 'onboarded' ? <div className="p-6 max-w-6xl mx-auto"><OnboardedView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} searchQuery={searchQuery} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={(a, stack) => handleOpenBusinessCard(a, stack)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} users={allUsers} payCycles={payCycles} userRole={user?.role || 'agent'} currentWindow={displayEarnings.current} referralRate={referralCommissionRate} /></div> : currentView === 'earnings-full' ? <div className="p-6 max-w-6xl mx-auto"><EarningsFullView history={displayEarnings.history} currentWindow={displayEarnings.current} appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} users={allUsers} userRole={user?.role || 'agent'} currentUserName={user?.name || ''} onDismissCycle={id => supabase.from('users').update({ dismissed_cycle_ids: [...(user?.dismissedCycleIds || []), id] }).eq('id', user?.id).then(() => refreshData())} incentives={allIncentives} referralRate={referralCommissionRate} /></div> : (
+                            <div className="relative p-6 min-h-full">
+                                <div className="sticky top-0 z-20 flex justify-end mb-6 pointer-events-none">
+                                    <button
+                                        onClick={() => {
+                                            setEditingAppt(null);
+                                            if (isAdmin) setIsCreateModalOpen(true);
+                                            else setIsModalOpen(true);
+                                        }}
+                                        className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-2xl transition-all active:scale-95 text-sm font-black uppercase tracking-widest animate-in slide-in-from-right-4 duration-500 shadow-indigo-200 dark:shadow-none"
+                                    >
+                                        {isAdmin ? <IconSparkles className="w-5 h-5" /> : <IconPlus className="w-5 h-5" />}
+                                        {isAdmin ? 'Log Onboarded Partner' : 'New Appointment'}
+                                    </button>
+                                </div>
 
-                            <ReferralMomentumWidget
-                                appointments={allAppointments}
-                                activeCycle={activeCycle}
-                                onViewAppt={a => handleOpenBusinessCard(a)}
-                                referralRate={referralCommissionRate}
-                                users={allUsers}
-                            />
+                                <ReferralMomentumWidget
+                                    appointments={allAppointments}
+                                    activeCycle={activeCycle}
+                                    onViewAppt={a => handleOpenBusinessCard(a)}
+                                    referralRate={referralCommissionRate}
+                                    users={allUsers}
+                                />
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-                                {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, ...((user?.showFailedSection ?? true) ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
-                                    const searchLower = searchQuery.toLowerCase();
-                                    const items = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)).filter(a => {
-                                        if (a.stage !== stage) return false;
-                                        if (stage === AppointmentStage.ONBOARDED && activeCycle) {
-                                            const start = new Date(activeCycle.startDate).getTime();
-                                            const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
-                                            const onboarded = new Date(a.onboardedAt || a.scheduledAt).getTime();
-                                            if (onboarded < start || onboarded > end) return false;
-                                        }
-                                        if (searchQuery) {
-                                            const matches = a.name.toLowerCase().includes(searchLower) || a.phone.includes(searchLower) || (a.email && a.email.toLowerCase().includes(searchLower)) || (a.notes && a.notes.toLowerCase().includes(searchLower)) || (a.aeName && a.aeName.toLowerCase().includes(searchLower)) || formatDate(a.scheduledAt).toLowerCase().includes(searchLower);
-                                            if (!matches) return false;
-                                        }
-                                        return true;
-                                    });
-                                    const sortedItems = [...items].sort((a, b) => {
-                                        const tA = new Date(a.scheduledAt).getTime();
-                                        const tB = new Date(b.scheduledAt).getTime();
-                                        return stage === AppointmentStage.ONBOARDED ? tB - tA : tA - tB;
-                                    });
-                                    if (sortedItems.length === 0 && stage !== AppointmentStage.ONBOARDED) return null;
-                                    return (
-                                        <div key={stage} className="flex flex-col gap-4 animate-in fade-in" onDragOver={e => e.preventDefault()} onDrop={() => draggedId && handleMoveStage(draggedId, stage)}>
-                                            <div className="flex justify-between px-1"><h3 className="font-bold text-slate-500 uppercase text-[10px] tracking-widest">{stage === AppointmentStage.ONBOARDED ? 'Cycle Onboarded' : stage === AppointmentStage.NO_SHOW ? 'No Show/Cancelled' : stage === AppointmentStage.DECLINED ? 'Declined' : STAGE_LABELS[stage]}</h3><span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-bold">{sortedItems.length}</span></div>
-                                            {stage === AppointmentStage.TRANSFERRED && (<div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-1 animate-pulse flex items-center gap-2"><div className="p-1 bg-indigo-600 text-white rounded-lg"><IconTransfer className="w-3.5 h-3.5" /></div><span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">LIVE WAITING ONBOARD</span></div>)}
-                                            {sortedItems.length === 0 && stage === AppointmentStage.ONBOARDED ? (
-                                                <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl opacity-50"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No Cycle Wins</p></div>
-                                            ) : (
-                                                <CardStack<Appointment> items={sortedItems} renderItem={appt => (<div onDragStart={() => setDraggedId(appt.id)} onDragEnd={() => { setDraggedId(null); setIsOverDeleteZone(false); }} draggable><AppointmentCard appointment={appt} onMoveStage={handleMoveStage} onEdit={(a, res) => { setEditingAppt(a); setIsRescheduling(!!res); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, sortedItems)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} agentName={isAdmin ? allUsers.find(u => u.id === appt.userId)?.name : undefined} preferredDialer={user.preferredDialer} referralRate={referralCommissionRate} /></div>)} />
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+                                    {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, ...((user?.showFailedSection ?? true) ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
+                                        const searchLower = searchQuery.toLowerCase();
+                                        const items = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)).filter(a => {
+                                            if (a.stage !== stage) return false;
+                                            if (stage === AppointmentStage.ONBOARDED && activeCycle) {
+                                                const start = new Date(activeCycle.startDate).getTime();
+                                                const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
+                                                const onboarded = new Date(a.onboardedAt || a.scheduledAt).getTime();
+                                                if (onboarded < start || onboarded > end) return false;
+                                            }
+                                            if (searchQuery) {
+                                                const matches = a.name.toLowerCase().includes(searchLower) || a.phone.includes(searchLower) || (a.email && a.email.toLowerCase().includes(searchLower)) || (a.notes && a.notes.toLowerCase().includes(searchLower)) || (a.aeName && a.aeName.toLowerCase().includes(searchLower)) || formatDate(a.scheduledAt).toLowerCase().includes(searchLower);
+                                                if (!matches) return false;
+                                            }
+                                            return true;
+                                        });
+                                        const sortedItems = [...items].sort((a, b) => {
+                                            const tA = new Date(a.scheduledAt).getTime();
+                                            const tB = new Date(b.scheduledAt).getTime();
+                                            return stage === AppointmentStage.ONBOARDED ? tB - tA : tA - tB;
+                                        });
+                                        if (sortedItems.length === 0 && stage !== AppointmentStage.ONBOARDED) return null;
+                                        return (
+                                            <div key={stage} className="flex flex-col gap-4 animate-in fade-in" onDragOver={e => e.preventDefault()} onDrop={() => draggedId && handleMoveStage(draggedId, stage)}>
+                                                <div className="flex justify-between px-1"><h3 className="font-bold text-slate-500 uppercase text-[10px] tracking-widest">{stage === AppointmentStage.ONBOARDED ? 'Cycle Onboarded' : stage === AppointmentStage.NO_SHOW ? 'No Show/Cancelled' : stage === AppointmentStage.DECLINED ? 'Declined' : STAGE_LABELS[stage]}</h3><span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-bold">{sortedItems.length}</span></div>
+                                                {stage === AppointmentStage.TRANSFERRED && (<div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-1 animate-pulse flex items-center gap-2"><div className="p-1 bg-indigo-600 text-white rounded-lg"><IconTransfer className="w-3.5 h-3.5" /></div><span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">LIVE WAITING ONBOARD</span></div>)}
+                                                {sortedItems.length === 0 && stage === AppointmentStage.ONBOARDED ? (
+                                                    <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl opacity-50"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No Cycle Wins</p></div>
+                                                ) : (
+                                                    <CardStack<Appointment> items={sortedItems} renderItem={appt => (<div onDragStart={() => setDraggedId(appt.id)} onDragEnd={() => { setDraggedId(null); setIsOverDeleteZone(false); }} draggable><AppointmentCard appointment={appt} onMoveStage={handleMoveStage} onEdit={(a, res) => { setEditingAppt(a); setIsRescheduling(!!res); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, sortedItems)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} agentName={isAdmin ? allUsers.find(u => u.id === appt.userId)?.name : undefined} preferredDialer={user.preferredDialer} referralRate={referralCommissionRate} allUsers={allUsers} /></div>)} />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {draggedId && (<div onDragOver={e => { e.preventDefault(); setIsOverDeleteZone(true); }} onDragLeave={() => setIsOverDeleteZone(false)} onDrop={() => { handleMoveStage(draggedId, AppointmentStage.NO_SHOW); setDraggedId(null); setIsOverDeleteZone(false); }} className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] transition-all duration-300 pointer-events-auto ${isOverDeleteZone ? 'scale-110' : 'scale-100 opacity-60'}`}><div className={`px-8 py-5 rounded-[2rem] flex items-center gap-3 shadow-2xl border-2 transition-all duration-300 ${isOverDeleteZone ? 'bg-amber-600 text-white border-amber-400' : 'bg-white dark:bg-slate-900 text-amber-600 border-amber-100 dark:border-amber-900/50'}`}><IconX className={`w-6 h-6 ${isOverDeleteZone ? 'animate-bounce' : ''}`} /><span className="font-black text-xs uppercase tracking-[0.2em]">Drop to Mark Failed</span></div></div>)}
                             </div>
-                            {draggedId && (<div onDragOver={e => { e.preventDefault(); setIsOverDeleteZone(true); }} onDragLeave={() => setIsOverDeleteZone(false)} onDrop={() => { handleMoveStage(draggedId, AppointmentStage.NO_SHOW); setDraggedId(null); setIsOverDeleteZone(false); }} className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] transition-all duration-300 pointer-events-auto ${isOverDeleteZone ? 'scale-110' : 'scale-100 opacity-60'}`}><div className={`px-8 py-5 rounded-[2rem] flex items-center gap-3 shadow-2xl border-2 transition-all duration-300 ${isOverDeleteZone ? 'bg-amber-600 text-white border-amber-400' : 'bg-white dark:bg-slate-900 text-amber-600 border-amber-100 dark:border-amber-900/50'}`}><IconX className={`w-6 h-6 ${isOverDeleteZone ? 'animate-bounce' : ''}`} /><span className="font-black text-xs uppercase tracking-[0.2em]">Drop to Mark Failed</span></div></div>)}
-                        </div>
-                    )}
+                        )}
                 </main>
             </div>
             <CreateModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setEditingAppt(null); }} onSubmit={handleSaveApptWrapper} isAdminMode={isAdmin} currentUserName={user.name} agentOptions={allUsers.filter(u => u.role !== 'admin')} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} />
-            <AppointmentModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingAppt(null); }} onSubmit={handleSaveApptWrapper} onDelete={id => { setDeleteConfirmation({ isOpen: true, id }); setEditingAppt(null); }} initialData={editingAppt} isRescheduling={isRescheduling} agentName={user.name} isAdmin={isAdmin} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} />
+            <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => setIsModalOpen(false)}>
+                <AppointmentModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingAppt(null); }} onSubmit={handleSaveApptWrapper} onDelete={id => { setDeleteConfirmation({ isOpen: true, id }); setEditingAppt(null); }} initialData={editingAppt} isRescheduling={isRescheduling} agentName={user?.name} isAdmin={isAdmin} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} />
+            </ErrorBoundary>
             <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => setIsBusinessCardOpen(false)}>
                 <BusinessCardModal
                     isOpen={isBusinessCardOpen} onClose={() => { setIsBusinessCardOpen(false); setActiveStack([]); }} appointment={viewingAppt} onEdit={(a, res) => { setEditingAppt(a); setIsRescheduling(!!res); setIsModalOpen(true); }} onDelete={id => { setDeleteConfirmation({ isOpen: true, id }); setIsBusinessCardOpen(false); }} onMoveStage={(id, stage, isManual) => { handleMoveStage(id, stage, isManual); setIsBusinessCardOpen(false); }} onSaveNotes={(id, notes) => supabase.from('appointments').update({ notes }).eq('id', id).then(() => refreshData())} onNext={() => navigateStack('next')} onPrev={() => navigateStack('prev')} hasNext={activeStack.length > 1} hasPrev={activeStack.length > 1} referralRate={referralCommissionRate} onUpdateReferrals={(id, count) => handleManualReferralUpdate(id, count)}
                 />
             </ErrorBoundary>
             <DeleteConfirmationModal isOpen={deleteConfirmation.isOpen} onClose={() => setDeleteConfirmation({ isOpen: false, id: null })} onConfirm={() => handleDeleteAppointment(deleteConfirmation.id!).then(() => setDeleteConfirmation({ isOpen: false, id: null }))} title="Confirm Removal" message="Permanently delete this item?" />
-            <AESelectionModal isOpen={isAEModalOpen} onClose={() => setIsAEModalOpen(false)} agentName={user.name} onConfirm={ae => { if (pendingMove) { handleMoveStageContext(pendingMove.id, pendingMove.stage, false).then(() => { supabase.from('appointments').update({ ae_name: ae }).eq('id', pendingMove.id).then(() => { setPendingMove(null); refreshData(); }); }); } }} />
+            <AESelectionModal isOpen={isAEModalOpen} onClose={() => setIsAEModalOpen(false)} agentName={user?.name} onConfirm={ae => { if (pendingMove) { handleMoveStage(pendingMove.id, pendingMove.stage, false).then(() => { supabase.from('appointments').update({ ae_name: ae }).eq('id', pendingMove.id).then(() => { setPendingMove(null); refreshData(); }); }); } }} />
             <EarningsPanel isOpen={isEarningsPanelOpen} onClose={() => setIsEarningsPanelOpen(false)} onViewAll={() => { setIsEarningsPanelOpen(false); setCurrentView('earnings-full'); }} currentWindow={displayEarnings.current} history={displayEarnings.history} lifetimeEarnings={displayEarnings.lifetime} teamEarnings={isAdmin ? displayEarnings.lifetime : undefined} teamCurrentPool={isAdmin ? teamCurrentCycleTotal : undefined} isTeamView={isAdmin} referralRate={referralCommissionRate} allAppointments={allAppointments} />
-            <TaxterChat user={user} allAppointments={allAppointments} allEarnings={displayEarnings.history} payCycles={payCycles} allUsers={allUsers} onNavigate={setCurrentView} activeCycle={activeCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} />
+            <ErrorBoundary FallbackComponent={ErrorFallback}>
+                <TaxterChat user={user} allAppointments={allAppointments} allEarnings={displayEarnings.history} payCycles={payCycles} allUsers={allUsers} onNavigate={setCurrentView} activeCycle={activeCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralCommissionRate={referralCommissionRate} />
+            </ErrorBoundary>
+
+            <div className="fixed top-20 right-6 z-[200] flex flex-col gap-3 pointer-events-none">
+                {toasts.map(t => (
+                    <div key={t.id} className={`pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-right-10 border backdrop-blur-md transition-all ${t.type === 'success' ? 'bg-emerald-500/90 border-emerald-400 text-white' : t.type === 'error' ? 'bg-rose-500/90 border-rose-400 text-white' : 'bg-slate-900/90 border-slate-700 text-white'}`}>
+                        {t.type === 'success' ? <IconCheck className="w-5 h-5" /> : t.type === 'error' ? <IconAlertCircle className="w-5 h-5" /> : <IconActivity className="w-5 h-5" />}
+                        <span className="text-sm font-black whitespace-nowrap">{t.message}</span>
+                    </div>
+                ))}
+            </div>
 
             <WeeklyRecapModal
                 isOpen={isWeeklyRecapOpen}
@@ -453,14 +568,16 @@ export default function App() {
                 allUsers={allUsers}
                 onExportCSV={handleExportCycleLedger}
             />
-            {activeCelebration && (
-                <CelebrationOverlay
-                    type={activeCelebration}
-                    onClose={() => setActiveCelebration(null)}
-                />
-            )}
+            {
+                activeCelebration && (
+                    <CelebrationOverlay
+                        type={activeCelebration}
+                        onClose={() => setActiveCelebration(null)}
+                    />
+                )
+            }
 
             <div className="fixed bottom-1 right-1 text-[10px] text-slate-300 dark:text-slate-700 opacity-50 z-[9999] pointer-events-none font-mono">v1.0.2</div>
-        </div>
+        </div >
     );
 }

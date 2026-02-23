@@ -73,7 +73,7 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
     };
 
     const filtered = useMemo(() => {
-        let result = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
+        let result = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
 
         if (selectedCycleId !== 'lifetime') {
             const cycle = payCycles.find(c => c.id === selectedCycleId);
@@ -207,11 +207,16 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                 )}
 
                 <div className="flex justify-between items-start mb-4 relative z-10">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg dark:shadow-none transform group-hover:rotate-12 transition-transform ${isSelfOwned ? 'bg-gradient-to-br from-amber-400 to-orange-600 shadow-orange-200' : 'bg-gradient-to-br from-yellow-400 to-orange-500 shadow-orange-200'}`}>
-                        {isSelfOwned ? <IconSparkles className="w-6 h-6" /> : <IconTrophy className="w-6 h-6" />}
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg dark:shadow-none transform group-hover:rotate-12 transition-transform ${appt.stage === AppointmentStage.ACTIVATED ? 'bg-gradient-to-br from-amber-400 to-orange-600 shadow-orange-200' : (isSelfOwned ? 'bg-gradient-to-br from-emerald-400 to-teal-600 shadow-emerald-200' : 'bg-gradient-to-br from-yellow-400 to-orange-500 shadow-orange-200')}`}>
+                        {appt.stage === AppointmentStage.ACTIVATED ? <IconSparkles className="w-6 h-6" /> : (isSelfOwned ? <IconCheck className="w-6 h-6" /> : <IconTrophy className="w-6 h-6" />)}
                     </div>
-                    <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-3 py-1 rounded-full text-sm font-bold shadow-sm">
-                        {formatCurrency(totalPayout)}
+                    <div className="flex flex-col items-end gap-1">
+                        <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-3 py-1 rounded-full text-sm font-bold shadow-sm">
+                            {formatCurrency(totalPayout)}
+                        </div>
+                        {appt.stage === AppointmentStage.ACTIVATED && (
+                            <span className="text-[8px] font-black text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full uppercase tracking-widest border border-amber-100 dark:border-amber-800">Activated</span>
+                        )}
                     </div>
                 </div>
 
@@ -224,10 +229,29 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                                 {agent.avatarId && agent.avatarId !== 'initial' ? (
                                     <div className="w-3 h-3">{getAvatarIcon(agent.avatarId)}</div>
                                 ) : (
-                                    <span>{agent.name.charAt(0)}</span>
+                                    <span>{(agent.name || '?').charAt(0)}</span>
                                 )}
                             </div>
-                            {agent.name}
+                            {agent.name || 'Unknown Agent'}
+                        </div>
+                    )}
+
+                    {appt.originalUserId && (
+                        <div className="mt-1 flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-slate-50 dark:bg-slate-900 text-slate-500 w-fit">
+                                <span className="opacity-50 text-[8px]">Orig:</span>
+                                <span className="text-slate-700 dark:text-slate-300">{users.find(u => u.id === appt.originalUserId)?.name || 'Team'}</span>
+                                {appt.originalOnboardType && (
+                                    <span className="opacity-70 ml-1 font-bold">
+                                        ({appt.originalOnboardType === 'self' ? 'Self' : `Transfer${appt.originalAeName ? ` to ${appt.originalAeName}` : ''}`})
+                                    </span>
+                                )}
+                            </div>
+                            {appt.stage === AppointmentStage.ACTIVATED && (
+                                <p className="text-[7px] text-slate-400 font-black uppercase tracking-tighter pl-1">
+                                    ✓ Commission Owner Switched to Recorder
+                                </p>
+                            )}
                         </div>
                     )}
 

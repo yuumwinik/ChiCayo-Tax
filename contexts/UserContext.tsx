@@ -37,8 +37,12 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         dismissedCycleIds: profile.dismissed_cycle_ids || [],
                         showFailedSection: profile.show_failed_section ?? true
                     });
+                } else {
+                    console.error("❌ UserContext: Session valid but NO profile found in 'users' table for ID:", session.user.id);
+                    setUser(null);
                 }
             } else {
+                console.log("🔐 UserContext: No active session found.");
                 setUser(null);
             }
         } catch (error) {

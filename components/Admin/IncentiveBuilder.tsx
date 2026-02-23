@@ -26,7 +26,7 @@ export const IncentiveBuilder: React.FC<IncentiveBuilderProps> = ({ onApply, onD
         model: 'gemini-3-flash-preview',
         contents: selfPrompt,
         config: {
-          systemInstruction: `You are the Achievement Engine for ChiCayo. Parse the admin's request into a structured rule.
+          systemInstruction: `You are the Achievement Engine for Community Tax. Parse the admin's request into a structured rule.
           MEMBERS: ${members.map(m => `${m.name} (id:${m.id})`).join(', ')}. 
           
           Rule Types:

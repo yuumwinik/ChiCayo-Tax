@@ -110,7 +110,7 @@ export const EarningsFullView: React.FC<EarningsFullViewProps> = ({
     const blob = new Blob([csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.setAttribute("href", URL.createObjectURL(blob));
-    link.setAttribute("download", `ChiCayo_Ledger_${title}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `Community Tax_Ledger_${title}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

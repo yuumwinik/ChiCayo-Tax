@@ -15,13 +15,13 @@ export const TutorialOverlay: React.FC<TutorialOverlayProps> = ({ isOpen, userRo
   if (!isOpen) return null;
 
   const slides = userRole === 'admin' ? [
-    { title: "Master Command Center", description: "Welcome to ChiCayo Admin. This app is designed to align your call center agents with high-performing Account Executives.", icon: <IconSparkles className="w-16 h-16 text-rose-500" />, color: "bg-rose-50 dark:bg-rose-900/20" },
+    { title: "Master Command Center", description: "Welcome to Community Tax Admin. This app is designed to align your call center agents with high-performing Account Executives.", icon: <IconSparkles className="w-16 h-16 text-rose-500" />, color: "bg-rose-50 dark:bg-rose-900/20" },
     { title: "Managing Pay Cycles", description: "Under 'Pay Cycles', schedule up to 3 reoccurring windows. Earnings are calculated automatically based on onboarding dates.", icon: <IconCycle className="w-16 h-16 text-orange-500" />, color: "bg-orange-50 dark:bg-orange-900/20" },
     { title: "Adjusting Global Payroll", description: "Increase or decrease commission rates per deal instantly. Changes reflect globally for all agents.", icon: <IconDollarSign className="w-16 h-16 text-emerald-500" />, color: "bg-emerald-50 dark:bg-emerald-900/20" },
     { title: "Team Auditing", description: "View the full 'Audit Log' to track agent activity, or export the 'Master Team CSV' for payroll processing.", icon: <IconDownload className="w-16 h-16 text-blue-500" />, color: "bg-blue-50 dark:bg-blue-900/20" },
     { title: "Taxter AI", description: "Taxter is connected to your entire database. Ask it 'Who is my top agent?' or 'What is the total payout expected?'", icon: <IconBot className="w-16 h-16 text-purple-500" />, color: "bg-purple-50 dark:bg-purple-900/20" }
   ] : [
-    { title: "Your Sales Funnel", description: "ChiCayo tracks your client's journey from first contact to signed partner. Log every call here.", icon: <IconSparkles className="w-16 h-16 text-indigo-500" />, color: "bg-indigo-50 dark:bg-indigo-900/20" },
+    { title: "Your Sales Funnel", description: "Community Tax tracks your client's journey from first contact to signed partner. Log every call here.", icon: <IconSparkles className="w-16 h-16 text-indigo-500" />, color: "bg-indigo-50 dark:bg-indigo-900/20" },
     { title: "Dynamic Kanban", description: "Manage your day by moving cards. Pro-tip: Drag a card to the bottom trash can to quickly remove it.", icon: <IconLayout className="w-16 h-16 text-blue-500" />, color: "bg-blue-50 dark:bg-blue-900/20" },
     { title: "Live Transfers", description: "When you have a live transfer, select the AE taking the call. We track closing performance per AE.", icon: <IconTransfer className="w-16 h-16 text-orange-500" />, color: "bg-orange-50 dark:bg-orange-900/20" },
     { title: "Personal Analytics", description: "Check 'My Stats' to see your conversion rate, golden hour, and cycle performance breakdown.", icon: <IconTrendingUp className="w-16 h-16 text-rose-500" />, color: "bg-rose-50 dark:bg-rose-900/20" },

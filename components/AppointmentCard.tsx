@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Appointment, AppointmentStage, STAGE_COLORS, STAGE_LABELS, AvatarId } from '../types';
+import { Appointment, AppointmentStage, STAGE_COLORS, STAGE_LABELS, AvatarId, User } from '../types';
 import { formatDate, formatCurrency, getRelativeTime } from '../utils/dateUtils';
 import { IconEdit, IconMail, IconPhone, IconTrash, getAvatarIcon, IconCopy, IconCheck, IconTransfer, IconBriefcase, IconX, IconNotes, IconSparkles, IconClock, IconAlertTriangle, IconAlertCircle } from './Icons';
 import { ProtocolModal } from './ProtocolModal';
@@ -15,9 +15,10 @@ interface AppointmentCardProps {
   agentAvatar?: AvatarId;
   preferredDialer?: string;
   referralRate: number;
+  allUsers?: User[];
 }
 
-export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, onMoveStage, onEdit, onView, onDelete, agentName, agentAvatar, preferredDialer, referralRate }) => {
+export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, onMoveStage, onEdit, onView, onDelete, agentName, agentAvatar, preferredDialer, referralRate, allUsers }) => {
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [copiedName, setCopiedName] = useState(false);
@@ -131,6 +132,25 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
         </div>
       )}
 
+      {appointment.originalUserId && (
+        <div className="flex flex-col gap-1 mb-2">
+          <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-lg w-fit">
+            <IconCheck className="w-3.5 h-3.5" />
+            <span>Orig: <strong>{allUsers?.find(u => u.id === appointment.originalUserId)?.name || 'Team Member'}</strong></span>
+            {appointment.originalOnboardType && (
+              <span className="opacity-70 ml-1">
+                ({appointment.originalOnboardType === 'self' ? 'Self' : `Transfer${appointment.originalAeName ? ` to ${appointment.originalAeName}` : ''}`})
+              </span>
+            )}
+          </div>
+          {appointment.stage === AppointmentStage.ACTIVATED && (
+            <p className="text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tighter pl-1">
+              ✓ Activation Reward: Commission Owner Switched to Recorder
+            </p>
+          )}
+        </div>
+      )}
+
       {agentName && (
         <div className="flex items-center gap-2 mb-3 -mt-1">
           <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-400">
@@ -187,39 +207,39 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.NO_SHOW); }}
               title="Failed to Show (Move to No Show)"
-              className="w-10 h-10 flex items-center justify-center rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50"
+              className="w-10 h-10 flex items-center justify-center rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50 relative z-40"
             >
               <IconAlertCircle className="w-4 h-4" />
             </button>
-            <button onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED); }} className="flex-1 py-2 px-2 h-10 text-[10px] font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors flex items-center justify-center gap-1"><IconCheck className="w-3 h-3" /> Confirm Onboard</button>
+            <button onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED); }} className="flex-1 py-2 px-2 h-10 text-[10px] font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors flex items-center justify-center gap-1 relative z-40"><IconCheck className="w-3 h-3" /> Confirm Onboard</button>
           </div>
         ) : (appointment.stage === AppointmentStage.PENDING || appointment.stage === AppointmentStage.RESCHEDULED) ? (
           <div className="flex items-center justify-between w-full gap-1.5">
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.NO_SHOW); }}
               title="Failed to Show (Move to No Show)"
-              className="w-10 h-10 flex items-center justify-center rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50"
+              className="w-10 h-10 flex items-center justify-center rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50 relative z-40"
             >
               <IconAlertCircle className="w-4 h-4" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(appointment, true); }}
               title="Reschedule"
-              className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-600 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 transition-all active:scale-90"
+              className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-600 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 transition-all active:scale-90 relative z-40"
             >
               <IconClock className="w-4 h-4" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED, true); }}
               title="Direct Self-Onboard"
-              className="flex-1 h-10 flex items-center justify-center gap-2 rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-sm"
+              className="flex-1 h-10 flex items-center justify-center gap-2 rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-sm relative z-40"
             >
               <IconCheck className="w-4 h-4" /> Onboard
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED, false); }}
               title="Transfer to AE"
-              className="flex-1 h-10 flex items-center justify-center gap-2 rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-indigo-200 dark:shadow-none"
+              className="flex-1 h-10 flex items-center justify-center gap-2 rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-indigo-200 dark:shadow-none relative z-40"
             >
               <IconTransfer className="w-4 h-4" /> Transfer
             </button>

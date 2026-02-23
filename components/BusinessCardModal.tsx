@@ -41,11 +41,23 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
         if (appointment) setNotes(appointment.notes || '');
     }, [appointment]);
 
-    const isOnboarded = appointment?.stage === AppointmentStage.ONBOARDED;
-    const isTransferQueue = appointment?.stage === AppointmentStage.TRANSFERRED;
-    const isActionable = appointment?.stage === AppointmentStage.PENDING || appointment?.stage === AppointmentStage.RESCHEDULED;
-
     if (!isOpen || !appointment) return null;
+
+    // Safe data defaults for Vercel stability
+    const name = appointment.name || 'Unknown Partner';
+    const scheduledAt = appointment.scheduledAt || appointment.createdAt || new Date().toISOString();
+    const createdAt = appointment.createdAt || new Date().toISOString();
+    const stage = appointment.stage || AppointmentStage.PENDING;
+    const phone = appointment.phone || 'No Phone';
+    const email = appointment.email || 'No Email';
+    const notesValue = appointment.notes || '';
+    const earnedAmount = appointment.earnedAmount || 0;
+    const aeName = appointment.aeName || 'Self';
+    const referralCount = appointment.referralCount || 0;
+
+    const isOnboarded = stage === AppointmentStage.ONBOARDED;
+    const isTransferQueue = stage === AppointmentStage.TRANSFERRED;
+    const isActionable = stage === AppointmentStage.PENDING || stage === AppointmentStage.RESCHEDULED;
 
     const handleUpdateReferrals = (delta: number) => {
         const current = appointment.referralCount || 0;
@@ -69,20 +81,20 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                 <div className={`w-full md:w-5/12 p-8 flex flex-col items-center text-center bg-slate-50 dark:bg-slate-800/30 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 transition-colors duration-500 ${isOnboarded ? 'bg-emerald-50/30 dark:bg-emerald-900/10' : ''}`}>
                     <div className="relative mb-6 flex items-center gap-4">
                         <button disabled={!hasPrev} onClick={onPrev} className={`p-2 rounded-full transition-all ${hasPrev ? 'opacity-30 hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700' : 'opacity-0'}`}><IconChevronLeft className="w-6 h-6" /></button>
-                        <div className="relative"><div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center text-3xl font-black border-4 border-white dark:border-slate-800 shadow-xl transition-all ${isOnboarded ? 'bg-emerald-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>{(appointment.name?.trim() || '?').charAt(0).toUpperCase()}</div></div>
+                        <div className="relative"><div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center text-3xl font-black border-4 border-white dark:border-slate-800 shadow-xl transition-all ${isOnboarded ? 'bg-emerald-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>{(name.trim() || '?').charAt(0).toUpperCase()}</div></div>
                         <button disabled={!hasNext} onClick={onNext} className={`p-2 rounded-full transition-all ${hasNext ? 'opacity-30 hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700' : 'opacity-0'}`}><IconChevronRight className="w-6 h-6" /></button>
                     </div>
 
-                    <h2 onClick={() => copyToClipboard(appointment.name, 'name')} className={`text-2xl font-black mb-1 transition-colors cursor-pointer ${copiedName ? 'text-emerald-600' : 'text-slate-900 dark:text-white'}`}>{appointment.name || 'Unknown User'}</h2>
+                    <h2 onClick={() => copyToClipboard(name, 'name')} className={`text-2xl font-black mb-1 transition-colors cursor-pointer ${copiedName ? 'text-emerald-600' : 'text-slate-900 dark:text-white'}`}>{name}</h2>
                     <div className="flex flex-col items-center gap-2 mb-6">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><IconCalendar className="w-3 h-3" /> Captured {formatDate(appointment.createdAt || new Date().toISOString())}</div>
-                        <div className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest flex flex-col items-center gap-1 shadow-sm border ${getRelativeTime(appointment.scheduledAt).isPast && isActionable ? 'bg-rose-100 text-rose-600 border-rose-200 animate-pulse' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><IconCalendar className="w-3 h-3" /> Captured {formatDate(createdAt)}</div>
+                        <div className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest flex flex-col items-center gap-1 shadow-sm border ${getRelativeTime(scheduledAt).isPast && isActionable ? 'bg-rose-100 text-rose-600 border-rose-200 animate-pulse' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
                             <div className="flex items-center gap-1.5">
-                                {getRelativeTime(appointment.scheduledAt || new Date().toISOString()).isPast && isActionable && <IconAlertTriangle className="w-3 h-3" />}
+                                {getRelativeTime(scheduledAt).isPast && isActionable && <IconAlertTriangle className="w-3 h-3" />}
                                 <IconClock className="w-3.5 h-3.5 opacity-50" />
-                                {isActionable ? (getRelativeTime(appointment.scheduledAt || new Date().toISOString()).isPast ? `Overdue ${getRelativeTime(appointment.scheduledAt || new Date().toISOString()).label}` : `Due ${getRelativeTime(appointment.scheduledAt || new Date().toISOString()).label}`) : STAGE_LABELS[appointment.stage]}
+                                {isActionable ? (getRelativeTime(scheduledAt).isPast ? `Overdue ${getRelativeTime(scheduledAt).label}` : `Due ${getRelativeTime(scheduledAt).label}`) : STAGE_LABELS[stage] || stage}
                             </div>
-                            <div className="text-[9px] opacity-60 font-bold">{formatDate(appointment.scheduledAt || new Date().toISOString())}</div>
+                            <div className="text-[9px] opacity-60 font-bold">{formatDate(scheduledAt)}</div>
                         </div>
                     </div>
 
@@ -90,8 +102,8 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                         <div className="w-full bg-emerald-600 p-5 rounded-3xl shadow-xl text-white text-left overflow-hidden relative group mt-4">
                             <div className="relative z-10">
                                 <div className="text-[10px] font-black uppercase opacity-70 mb-1">Production Earned</div>
-                                <div className="text-3xl font-black mb-3">{formatCurrency(appointment.earnedAmount || 0)}</div>
-                                <div className="text-[9px] font-bold uppercase bg-white/20 px-2 py-1 rounded-lg w-fit">Closer: {appointment.aeName || 'Self'}</div>
+                                <div className="text-3xl font-black mb-3">{formatCurrency(earnedAmount)}</div>
+                                <div className="text-[9px] font-bold uppercase bg-white/20 px-2 py-1 rounded-lg w-fit">Closer: {aeName}</div>
                             </div>
                             <IconTrophy className="absolute -bottom-2 -right-2 w-16 h-16 text-white/10 group-hover:scale-110 transition-transform" />
                         </div>
@@ -110,28 +122,28 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                         <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 group transition-all hover:border-indigo-200 relative">
                             <div className="flex items-center gap-2 mb-2"><IconPhone className="w-3.5 h-3.5 text-indigo-500" /><span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Phone</span></div>
                             <div className="flex items-center justify-between">
-                                <ProtocolModal type="phone" value={appointment.phone}>{(trigger) => <button onClick={trigger} className="text-xs font-black text-slate-900 dark:text-white hover:text-indigo-600">{appointment.phone}</button>}</ProtocolModal>
-                                <button onClick={() => copyToClipboard(appointment.phone, 'phone')} className={`p-1.5 rounded-lg transition-all ${copiedPhone ? 'bg-emerald-100 text-emerald-600' : 'text-slate-300 hover:text-indigo-600 hover:bg-white'}`}><IconCopy className="w-3.5 h-3.5" /></button>
+                                <ProtocolModal type="phone" value={phone}>{(trigger) => <button onClick={trigger} className="text-xs font-black text-slate-900 dark:text-white hover:text-indigo-600">{phone}</button>}</ProtocolModal>
+                                <button onClick={() => copyToClipboard(phone, 'phone')} className={`p-1.5 rounded-lg transition-all ${copiedPhone ? 'bg-emerald-100 text-emerald-600' : 'text-slate-300 hover:text-indigo-600 hover:bg-white'}`}><IconCopy className="w-3.5 h-3.5" /></button>
                             </div>
                         </div>
                         <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 group transition-all hover:border-blue-200 relative">
                             <div className="flex items-center gap-2 mb-2"><IconMail className="w-3.5 h-3.5 text-blue-500" /><span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Email</span></div>
                             <div className="flex items-center justify-between">
-                                <ProtocolModal type="email" value={appointment.email} templatePath={isOnboarded ? "Files/Welcome to the Community Tax – SBTPG Referral Program.oft" : undefined}>{(trigger) => <button onClick={trigger} className="text-xs font-black text-slate-900 dark:text-white hover:text-blue-600 truncate block max-w-[120px]">{appointment.email || 'None'}</button>}</ProtocolModal>
-                                <button onClick={() => copyToClipboard(appointment.email || '', 'email')} className={`p-1.5 rounded-lg transition-all ${copiedEmail ? 'bg-emerald-100 text-emerald-600' : 'text-slate-300 hover:text-blue-600 hover:bg-white'}`}><IconCopy className="w-3.5 h-3.5" /></button>
+                                <ProtocolModal type="email" value={email} templatePath={isOnboarded ? "Files/Welcome to the Community Tax – SBTPG Referral Program.oft" : undefined}>{(trigger) => <button onClick={trigger} className="text-xs font-black text-slate-900 dark:text-white hover:text-blue-600 truncate block max-w-[120px]">{email}</button>}</ProtocolModal>
+                                <button onClick={() => copyToClipboard(email, 'email')} className={`p-1.5 rounded-lg transition-all ${copiedEmail ? 'bg-emerald-100 text-emerald-600' : 'text-slate-300 hover:text-blue-600 hover:bg-white'}`}><IconCopy className="w-3.5 h-3.5" /></button>
                             </div>
                         </div>
                     </div>
 
-                    {isOnboarded && ((appointment.referralCount || 0) > 0 || user?.role === 'admin') && (
+                    {isOnboarded && (referralCount > 0 || user?.role === 'admin') && (
                         <div className="mb-6 animate-in slide-in-from-top-2 duration-500">
                             <div className="flex items-center justify-between mb-3 px-1">
                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><IconUsers className="w-4 h-4 text-rose-500" /> Referral Ledger</h4>
-                                <span className="text-[9px] font-black text-rose-600 bg-rose-50 dark:bg-rose-900/20 px-2 py-0.5 rounded-lg">+{formatCurrency((appointment.referralCount || 0) * referralRate)} Bonus</span>
+                                <span className="text-[9px] font-black text-rose-600 bg-rose-50 dark:bg-rose-900/20 px-2 py-0.5 rounded-lg">+{formatCurrency(referralCount * referralRate)} Bonus</span>
                             </div>
                             <div className="bg-rose-50/50 dark:bg-rose-900/10 p-5 rounded-3xl border border-rose-100 dark:border-rose-900/30 flex items-center justify-between">
                                 <div>
-                                    <div className="text-2xl font-black text-rose-600 dark:text-rose-400">{appointment.referralCount || 0}</div>
+                                    <div className="text-2xl font-black text-rose-600 dark:text-rose-400">{referralCount}</div>
                                     <div className="text-[10px] font-bold text-slate-500 uppercase">Successful Referrals</div>
                                 </div>
                                 {user?.role === 'admin' && (
@@ -146,18 +158,30 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
 
                     <div className="flex-1 flex flex-col min-h-[150px]">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 mb-2 px-1"><IconNotes className="w-3 h-3" /> Partner Session Logs</label>
-                        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => onSaveNotes(appointment.id, notes)} placeholder="Document context here..." className="flex-1 w-full bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 text-xs font-medium border-none focus:ring-2 focus:ring-indigo-500/20 resize-none" />
+                        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => onSaveNotes(appointment.id, notes)} placeholder="Document context here..." className="flex-1 w-full bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 text-xs font-medium border-none focus:ring-2 focus:ring-indigo-500/20 resize-none text-slate-700 dark:text-slate-300" />
+                    </div>
+
+                    <div className="mt-8">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 mb-3 px-1">Pipeline Mobility</label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, AppointmentStage.ACTIVATED, AppointmentStage.NO_SHOW, AppointmentStage.DECLINED].map(s => {
+                                const isActive = stage === s;
+                                return (
+                                    <button
+                                        key={s}
+                                        onClick={() => onMoveStage(appointment.id, s, s === AppointmentStage.ONBOARDED)}
+                                        className={`px-3 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-tighter border transition-all ${isActive ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-500 hover:border-indigo-300'}`}
+                                    >
+                                        {STAGE_LABELS[s] || s}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
 
                     <div className="mt-6 flex flex-wrap gap-3">
-                        <button
-                            onClick={() => { onMoveStage(appointment.id, AppointmentStage.NO_SHOW); onClose(); }}
-                            className="flex-1 py-4 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-black rounded-2xl text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-100 transition-colors"
-                        >
-                            <IconAlertTriangle className="w-4 h-4" /> Mark as Failed
-                        </button>
-                        <button onClick={() => { onEdit(appointment); onClose(); }} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black rounded-2xl text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-200 transition-colors"><IconEdit className="w-4 h-4" /> Master Edit</button>
-                        <button onClick={() => { onDelete(appointment.id); onClose(); }} className="p-4 bg-rose-50 text-rose-600 rounded-2xl hover:bg-rose-100 transition-colors"><IconTrash className="w-5 h-5" /></button>
+                        <button onClick={() => { onEdit(appointment); onClose(); }} className="flex-1 py-4 bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-black rounded-2xl text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"><IconEdit className="w-4 h-4" /> Open Full Editor</button>
+                        <button onClick={() => { onDelete(appointment.id); onClose(); }} className="p-4 bg-rose-50 text-rose-600 rounded-2xl hover:bg-rose-100 transition-colors border border-rose-100"><IconTrash className="w-5 h-5" /></button>
                     </div>
                 </div>
             </div>

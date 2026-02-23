@@ -14,7 +14,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -26,9 +26,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     setLoading(true);
     setError('');
 
-    // Aggressive sanitization
+    // Aggressive sanitization (but NOT on password)
     const email = formData.email.trim().toLowerCase();
-    const password = formData.password.trim();
+    const password = formData.password; // Do NOT trim passwords
     const name = formData.name.trim();
 
     try {
@@ -50,48 +50,48 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
           .single();
 
         if (profileError || !userProfile) {
-           // Fallback: If user exists in Auth but not in Table (rare edge case), recreate
-           const fallbackUser: any = {
-              id: authData.user.id,
-              email: email,
-              name: name || 'User',
-              role: 'agent',
-              avatar_id: 'initial',
-              created_at: new Date().toISOString()
-           };
-           // Use upsert to avoid conflicts
-           const { error: insertError } = await supabase.from('users').upsert(fallbackUser); 
-           if (insertError) throw insertError;
-           
-           await onLogin({
-              id: fallbackUser.id,
-              name: fallbackUser.name,
-              email: fallbackUser.email,
-              role: fallbackUser.role,
-              avatarId: fallbackUser.avatar_id,
-              createdAt: fallbackUser.created_at,
-              hasSeenTutorial: false
-           }, false);
+          // Fallback: If user exists in Auth but not in Table (rare edge case), recreate
+          const fallbackUser: any = {
+            id: authData.user.id,
+            email: email,
+            name: name || 'User',
+            role: 'agent',
+            avatar_id: 'initial',
+            created_at: new Date().toISOString()
+          };
+          // Use upsert to avoid conflicts
+          const { error: insertError } = await supabase.from('users').upsert(fallbackUser);
+          if (insertError) throw insertError;
+
+          await onLogin({
+            id: fallbackUser.id,
+            name: fallbackUser.name,
+            email: fallbackUser.email,
+            role: fallbackUser.role,
+            avatarId: fallbackUser.avatar_id,
+            createdAt: fallbackUser.created_at,
+            hasSeenTutorial: false
+          }, false);
         } else {
-           // Check for Admin Role Bypass
-           if (isAdmin && userProfile.role !== 'admin') {
-              if (email === 'admin@chicayotax.com') {
-                 // Auto-promote Master Admin in DB if not already
-                 await supabase.from('users').update({ role: 'admin', avatar_id: 'crown' }).eq('id', userProfile.id);
-                 userProfile.role = 'admin';
-              } else {
-                 throw new Error("Access denied. You do not have Admin privileges.");
-              }
-           }
-           await onLogin({
-             id: userProfile.id,
-             name: userProfile.name,
-             email: userProfile.email,
-             role: userProfile.role as 'agent' | 'admin',
-             avatarId: userProfile.avatar_id,
-             createdAt: userProfile.created_at,
-             hasSeenTutorial: userProfile.has_seen_tutorial
-           }, false);
+          // Check for Admin Role Bypass
+          if (isAdmin && userProfile.role !== 'admin') {
+            if (email === 'admin@communitytax.com') {
+              // Auto-promote Master Admin in DB if not already
+              await supabase.from('users').update({ role: 'admin', avatar_id: 'crown' }).eq('id', userProfile.id);
+              userProfile.role = 'admin';
+            } else {
+              throw new Error("Access denied. You do not have Admin privileges.");
+            }
+          }
+          await onLogin({
+            id: userProfile.id,
+            name: userProfile.name,
+            email: userProfile.email,
+            role: userProfile.role as 'agent' | 'admin',
+            avatarId: userProfile.avatar_id,
+            createdAt: userProfile.created_at,
+            hasSeenTutorial: userProfile.has_seen_tutorial
+          }, false);
         }
 
       } else {
@@ -101,9 +101,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
           password,
           options: {
             data: {
-              name: name, // IMPORTANT: Pass name to Supabase Auth Metadata for the Trigger
-            },
-            autoSignIn: true // Try to auto sign in if email confirm is off
+              name: name,
+            }
           }
         });
 
@@ -112,35 +111,35 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
 
         // Check if session was created (Auto-confirm ON) or if it's pending (Confirm Email ON)
         if (!authData.session) {
-            // If no session, it usually means Email Confirmation is required by Supabase settings
-            throw new Error("Account created! Please check your email to confirm, or ask Admin to disable confirmation.");
+          // If no session, it usually means Email Confirmation is required by Supabase settings
+          throw new Error("Account created! Please check your email to confirm, or ask Admin to disable confirmation.");
         }
 
         // NOTE: We rely on the Supabase SQL Trigger (handle_new_user) to insert the row into public.users.
         // We do NOT manually insert here to avoid "Duplicate Key" errors.
 
         await onLogin({
-           id: authData.user.id,
-           name: name,
-           email: email,
-           role: 'agent',
-           avatarId: 'initial',
-           createdAt: new Date().toISOString(),
-           hasSeenTutorial: false
+          id: authData.user.id,
+          name: name,
+          email: email,
+          role: 'agent',
+          avatarId: 'initial',
+          createdAt: new Date().toISOString(),
+          hasSeenTutorial: false
         }, true);
       }
 
     } catch (err: any) {
       console.error("Auth Error:", err);
       let msg = 'Authentication failed.';
-      
+
       // Robust error parsing
       if (err?.message) {
-          msg = err.message;
+        msg = err.message;
       } else if (typeof err === 'string') {
-          msg = err;
+        msg = err;
       } else {
-          msg = JSON.stringify(err);
+        msg = JSON.stringify(err);
       }
 
       // Friendly messages for common issues
@@ -158,35 +157,35 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-md">
-        
+
         {/* Header */}
         <div className="text-center mb-8">
           <div className="bg-indigo-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-indigo-200 dark:shadow-none">
             <IconLogo className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">ChiCayo Tax</h1>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Community Tax</h1>
           <p className="text-slate-500 dark:text-slate-400">Appointment & Earnings Tracker</p>
         </div>
 
         {/* Card */}
         <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700/50 p-8 animate-in fade-in zoom-in duration-300">
-          
+
           <div className="flex justify-between items-center mb-6">
-             <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-               {isLogin ? 'Welcome Back' : 'Create Account'}
-             </h2>
-             
-             {/* Admin Toggle - Only visible on Login */}
-             {isLogin && (
-               <button 
-                 type="button"
-                 onClick={() => setIsAdmin(!isAdmin)}
-                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isAdmin ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}`}
-               >
-                 {isAdmin ? <IconLock className="w-3 h-3" /> : <IconUser className="w-3 h-3" />}
-                 {isAdmin ? 'Admin' : 'Agent'}
-               </button>
-             )}
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+              {isLogin ? 'Welcome Back' : 'Create Account'}
+            </h2>
+
+            {/* Admin Toggle - Only visible on Login */}
+            {isLogin && (
+              <button
+                type="button"
+                onClick={() => setIsAdmin(!isAdmin)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isAdmin ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}`}
+              >
+                {isAdmin ? <IconLock className="w-3 h-3" /> : <IconUser className="w-3 h-3" />}
+                {isAdmin ? 'Admin' : 'Agent'}
+              </button>
+            )}
           </div>
 
           {error && (
@@ -205,20 +204,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                   className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white transition-all"
                   placeholder="John Doe"
                   value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
                 />
               </div>
             )}
-            
+
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email Address</label>
               <input
                 type="email"
                 required
                 className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white transition-all"
-                placeholder="name@company.com" 
+                placeholder="name@company.com"
                 value={formData.email}
-                onChange={e => setFormData({...formData, email: e.target.value})}
+                onChange={e => setFormData({ ...formData, email: e.target.value })}
               />
             </div>
 
@@ -232,7 +231,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                   className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white transition-all pr-12"
                   placeholder="••••••••"
                   value={formData.password}
-                  onChange={e => setFormData({...formData, password: e.target.value})}
+                  onChange={e => setFormData({ ...formData, password: e.target.value })}
                 />
                 <button
                   type="button"
@@ -248,11 +247,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             <button
               type="submit"
               disabled={loading}
-              className={`w-full py-3.5 font-bold rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-70 mt-2 ${
-                  isAdmin 
-                    ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-200 dark:shadow-none' 
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 dark:shadow-none'
-              }`}
+              className={`w-full py-3.5 font-bold rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-70 mt-2 ${isAdmin
+                ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-200 dark:shadow-none'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 dark:shadow-none'
+                }`}
             >
               {loading ? 'Processing...' : (isLogin ? (isAdmin ? 'Login as Admin' : 'Log In') : 'Sign Up')}
             </button>
@@ -261,7 +259,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
           <div className="mt-6 text-center">
             <p className="text-sm text-slate-500">
               {isLogin ? "Don't have an account? " : "Already have an account? "}
-              <button 
+              <button
                 type="button"
                 onClick={() => { setIsLogin(!isLogin); setIsAdmin(false); setError(''); }}
                 className="text-indigo-600 hover:text-indigo-500 font-semibold"
@@ -271,9 +269,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             </p>
           </div>
         </div>
-        
+
         <div className="mt-8 text-center">
-           <p className="text-xs text-slate-400">© 2025 ChiCayo Tax. All rights reserved.</p>
+          <p className="text-xs text-slate-400">© 2025 Community Tax. All rights reserved.</p>
         </div>
       </div>
     </div>

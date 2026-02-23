@@ -11,6 +11,7 @@ interface ReferralWinsTabProps {
     payCycles: PayCycle[];
     referralRate: number;
     currentUser?: User;
+    onViewAppt: (appt: Appointment, stack?: Appointment[]) => void;
 }
 
 export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
@@ -19,7 +20,8 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
     users,
     payCycles,
     referralRate,
-    currentUser
+    currentUser,
+    onViewAppt
 }) => {
     const isMainAdmin = currentUser?.role === 'admin';
 
@@ -89,7 +91,14 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
                 <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest px-4">Partnership Referral Feed</h3>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {referralData.map((data, idx) => (
-                        <div key={idx} className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 hover:border-indigo-200 transition-all hover:shadow-lg group">
+                        <div
+                            key={idx}
+                            onClick={() => {
+                                const appt = appointments.find(a => a.id === data.partnerId);
+                                if (appt) onViewAppt(appt);
+                            }}
+                            className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 hover:border-indigo-200 transition-all hover:shadow-lg group cursor-pointer"
+                        >
                             <div className="flex justify-between items-start mb-4">
                                 <div>
                                     <h4 className="font-black text-slate-900 dark:text-white group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{data.partnerName}</h4>
@@ -97,7 +106,14 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
                                 </div>
                                 <div className="text-right">
                                     <p className="text-xs font-black text-emerald-600">{formatCurrency(data.totalEarned)}</p>
-                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Agent: {data.agentName}</p>
+                                    <div className="flex flex-col items-end">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Current: {data.agentName}</p>
+                                        {appointments.find(a => a.id === data.partnerId)?.originalUserId && appointments.find(a => a.id === data.partnerId)?.originalUserId !== data.agentId && (
+                                            <p className="text-[8px] font-black text-indigo-500 uppercase tracking-tighter mt-0.5 whitespace-nowrap">
+                                                Onboarded by {users.find(u => u.id === appointments.find(a => a.id === data.partnerId)?.originalUserId)?.name || 'Former Agent'}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
