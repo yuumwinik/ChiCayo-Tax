@@ -15,10 +15,14 @@ import {
     IconMicOff,
     IconX,
     IconSend,
-    IconBot
+    IconBot,
+    IconActivity,
+    IconSidebarToggle,
+    IconLayout
 } from './Icons';
-import { Groq } from "groq-sdk";
+import { RichMessageRenderer } from './TaxterChat';
 import { formatCurrency } from '../utils/dateUtils';
+import { useUser } from '../contexts/UserContext';
 
 interface Message {
     id: string;
@@ -27,17 +31,19 @@ interface Message {
 }
 
 export const EducationCenter: React.FC = () => {
+    const { user } = useUser();
     const [activeTab, setActiveTab] = useState<'scripts' | 'info' | 'faq' | 'battlecard'>('scripts');
-    const [expandedSections, setExpandedSections] = useState<string[]>(['onboard_script-opening']);
+    const [expandedSections, setExpandedSections] = useState<string[]>(['onboard_script-intro']);
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
     // Assistant State
     const [messages, setMessages] = useState<Message[]>([
-        { id: '1', role: 'model', text: "Welcome to the Community Tax Education Center. I'm your AI Performance Coach. I can help you master our scripts, clarify resolution product details, or provide live coaching tips. Type a question below or start 'Live Assist' during your call." }
+        { id: '1', role: 'model', text: `Welcome back, **${user?.name || 'Agent'}**. I'm your AI Performance Coach. I'm listening to your cycle and the training manual. Start 'Live Assist' during a call for real-time tips.` }
     ]);
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [isListening, setIsListening] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const toggleSection = (id: string) => {
@@ -56,6 +62,65 @@ export const EducationCenter: React.FC = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isTyping]);
 
+    const handleLocalQuery = (text: string): string | null => {
+        const lower = text.toLowerCase();
+
+        // 1. Script Lookups
+        if (lower.includes('script') || lower.includes('say') || lower.includes('opening') || lower.includes('call')) {
+            const script = TRAINING_CONTENT.scripts[0];
+            const opening = script.sections[0].lines?.[0]?.text;
+            return `### Pro-Agent Scripting\nWhen opening a call with a partner, keep it crisp:\n\n*"${opening}"*\n\nFocus on the **Official Resolution Partner** status with Drake/SBTPG. [[NAV:education]]`;
+        }
+
+        // 2. Product/Process/Partner Details
+        if (lower.includes('investigation') || lower.includes('process') || lower.includes('representation') || lower.includes('step')) {
+            const p = (TRAINING_CONTENT as any).theProcess;
+            return `### The Resolution Process\nWe handle IRS debt in two key stages:\n\n**1. ${p.step1.title}:** ${p.step1.actions[0]} and ${p.step1.actions[1]}.\n**2. ${p.step2.title}:** ${p.step2.actions[0]} and stopping IRS enforcement.\n\nThis makes us a true **Full-Service Resolution Department** for our partners.`;
+        }
+
+        if (lower.includes('sbtpg') || lower.includes('drake') || lower.includes('partnership') || lower.includes('commission')) {
+            return `### Partner Knowledge\nCommunity Tax is the direct partner for **SBTPG, Drake, and EPS**.\n\n- **Requirement:** Debt must be [[STAT:IRS/State Debt:$7,000+]]\n- **Compensation:** $350 - $400 depending on the integrated channel.\n- **Direct Benefit:** We provide CE credits and monthly webinars.`;
+        }
+
+        // 3. Objections
+        if (lower.includes('objection') || lower.includes('no') || lower.includes('cost') || lower.includes('expensive')) {
+            const handlers = TRAINING_CONTENT.objectionHandlers;
+            return `### Handling Objections\nCommon hurdle: "It's too expensive."\n\n**Response:** ${handlers[1].rebuttal}`;
+        }
+
+        return null;
+    };
+
+    const callOllama = async (prompt: string): Promise<string | null> => {
+        try {
+            const res = await fetch('http://localhost:11434/api/chat', {
+                method: 'POST',
+                body: JSON.stringify({
+                    model: 'llama3',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `You are the master Performance Coach for Community Tax.
+                            GOAL: Masterfully guide agents through scripts, the 2-step resolution process, and partner compensation.
+                            KNOWLEDGE: You have access to the full training manual (scripts, compensation, process) AND the user's current performance data.
+                            RULES: Never mention being in 'Local Mode' or system limitations. You are simply the master coach.
+                            TRAINING MANUAL: ${JSON.stringify(TRAINING_CONTENT)}`
+                        },
+                        ...messages.slice(-6).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
+                        { role: 'user', content: prompt }
+                    ],
+                    stream: false
+                })
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data.message.content;
+        } catch (e) {
+            console.warn("[Coach] Ollama not reached.", e);
+            return null;
+        }
+    };
+
     const handleSend = async (text: string = input) => {
         if (!text.trim() || isTyping) return;
         const userMsg: Message = { id: Date.now().toString(), role: 'user', text };
@@ -63,50 +128,27 @@ export const EducationCenter: React.FC = () => {
         setInput('');
         setIsTyping(true);
 
-        try {
-            const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-            if (!apiKey) throw new Error("Missing VITE_GROQ_API_KEY");
+        const localResponse = handleLocalQuery(text);
 
-            const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+        if (localResponse) {
+            setTimeout(() => {
+                setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: localResponse }]);
+                setIsTyping(false);
+            }, 800);
+            return;
+        }
 
-            const systemPrompt = `You are the Performance Coach for the ChiCayo Tax application.
-            The company name is Community Tax.
-            Your job is to help agents master the scripts and product for Tax Debt Resolution.
-            
-            KNOWLEDGE BASE:
-            - Business: Community Tax (Partners of Santa Barbara TPG, Drake, Password, EPS).
-            - Services: IRS/State debt negotiation, Offer in Compromise, Penalty Abatement, Representation.
-            - Target Client: Owes $7,000+ in IRS/State tax debt.
-            - Partner Commissions: $350 (SBTPG) or $400 (Direct Partners).
-            - Agent Commissions: $3 (Self Onboard), $2 (AE Transfer), $10 (Referral Activation callback).
-            
-            SCRIPTS: ${JSON.stringify(TRAINING_CONTENT)}
-            
-            STYLE: Encouraging, concise, and professional. Always provide specific script lines when asked how to handle a situation. Mention Community Tax, not any other company name.`;
+        const ollamaResponse = await callOllama(text);
 
-            const completion = await groq.chat.completions.create({
-                messages: [
-                    { role: "system" as const, content: systemPrompt },
-                    ...messages.filter(m => m.role !== 'live').slice(-5).map(m => ({
-                        role: (m.role === 'model' ? 'assistant' : 'user') as "assistant" | "user",
-                        content: m.text
-                    })),
-                    { role: "user" as const, content: text }
-                ],
-                model: "llama-3.3-70b-versatile",
-                temperature: 0.7,
-            });
-
-            const res = completion.choices[0]?.message?.content || "I'm not sure about that. Try checking the FAQ section.";
-            setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: res }]);
-        } catch (e: any) {
-            console.error("Coach Assist Error:", e);
-            const errorMsg = e.message?.includes("API key")
-                ? "API Key missing or invalid. Please check your .env file."
-                : "Service temporarily unavailable. Please check the scripts manually.";
-            setMessages(prev => [...prev, { id: 'err', role: 'model', text: errorMsg }]);
-        } finally {
+        if (ollamaResponse) {
+            setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: ollamaResponse }]);
             setIsTyping(false);
+        } else {
+            setTimeout(() => {
+                const fallback = "I'm ready to help you master our process. Try asking about our **2-step investigation**, **partner commissions**, or for a specific **script** from the tabs above.";
+                setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: fallback }]);
+                setIsTyping(false);
+            }, 1000);
         }
     };
 
@@ -127,19 +169,28 @@ export const EducationCenter: React.FC = () => {
             recognitionRef.current.lang = 'en-US';
 
             recognitionRef.current.onresult = (event: any) => {
-                const transcript = Array.from(event.results)
-                    .map((result: any) => result[0])
-                    .map((result: any) => result.transcript)
-                    .join('');
+                const results = event.results;
+                const lastResult = results[results.length - 1];
 
-                // If it looks like a complete sentence and has keywords
-                const lastResult = event.results[event.results.length - 1];
                 if (lastResult.isFinal) {
-                    const text = lastResult[0].transcript.toLowerCase();
-                    if (text.includes("commission") || text.includes("how much") || text.includes("owe") || text.includes("partnership") ||
-                        text.includes("sbtpg") || text.includes("drake") || text.includes("local cpa") || text.includes("cost") ||
-                        text.includes("IRS") || text.includes("qualified")) {
-                        handleSend(`The partner just said: "${text}". Provide a coaching tip.`);
+                    const transcript = lastResult[0].transcript.toLowerCase();
+                    console.log("[Live Assist] Heard:", transcript);
+
+                    // Robust Keyword Detection
+                    const keywords = [
+                        { keys: ["commission", "how much", "pay me", "reward"], query: "Tell me about SBTPG and Drake commissions for partners." },
+                        { keys: ["local cpa", "local guy", "my own", "already have"], query: "How do I handle the 'Local CPA' objection?" },
+                        { keys: ["cost", "expensive", "how much", "fee"], query: "What is the pricing for the investigation and resolution phases?" },
+                        { keys: ["investigation", "step 1", "first step"], query: "Explain Phase 1: Investigation process in detail." },
+                        { keys: ["sbtpg", "drake", "pathward", "eps"], query: "What are the benefits of the SBTPG and Drake integration?" },
+                        { keys: ["owes", "debt", "irs", "state"], query: "What is the minimum debt requirement for a referral?" }
+                    ];
+
+                    for (const kw of keywords) {
+                        if (kw.keys.some(k => transcript.includes(k))) {
+                            handleSend(`[LIVE ASSIST] Detected: "${transcript}". ${kw.query}`);
+                            break;
+                        }
                     }
                 }
             };
@@ -174,6 +225,11 @@ export const EducationCenter: React.FC = () => {
             );
         }
 
+        const processedText = line.text
+            .replace(/\[User Name\]/g, user?.name || 'an expert')
+            .replace(/\[My Name\]/g, user?.name || 'an expert')
+            .replace(/\[Your Name\]/g, user?.name || 'an expert');
+
         return (
             <div key={lineId} className="group relative bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 p-4 rounded-2xl transition-all hover:shadow-md">
                 <div className="flex justify-between items-start gap-3">
@@ -184,12 +240,12 @@ export const EducationCenter: React.FC = () => {
                             </span>
                         </div>
                         <p className="text-sm text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
-                            {line.text}
+                            {processedText}
                         </p>
                     </div>
                     {line.isQuickCopy && (
                         <button
-                            onClick={() => copyToClipboard(line.text, lineId)}
+                            onClick={() => copyToClipboard(processedText, lineId)}
                             className={`shrink-0 p-2 rounded-xl transition-all ${isCopied ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 dark:bg-slate-900 text-slate-400 opacity-0 group-hover:opacity-100 hover:text-indigo-600'}`}
                         >
                             {isCopied ? <IconCheck className="w-4 h-4" /> : <IconCopy className="w-4 h-4" />}
@@ -241,8 +297,102 @@ export const EducationCenter: React.FC = () => {
             </header>
 
             {/* Main Dual-Pane Content */}
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-                {/* Left Panel: Knowledge & Scripts */}
+            <div className="flex-1 flex overflow-hidden relative">
+
+                {/* AI Assistant - NOW ON LEFT and Collapsible */}
+                <div className={`h-full shrink-0 bg-white dark:bg-[#0f172a] border-r border-slate-200 dark:border-slate-800 flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.1)] z-10 relative overflow-hidden transition-all duration-500 ease-in-out ${isCollapsed ? 'w-0 -translate-x-full opacity-0' : 'w-full lg:w-[400px] border-r'}`}>
+                    {/* Decorative Background */}
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600/5 rounded-full blur-3xl -z-1" />
+                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-violet-600/5 rounded-full blur-3xl -z-1" />
+
+                    <div className="p-8 bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-between shadow-xl relative z-20">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl border border-white/20 shadow-inner group transition-transform hover:rotate-12">
+                                <IconBot className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black text-white uppercase tracking-widest">Coach Assist</h3>
+                                <div className="flex items-center gap-2 text-[9px] text-indigo-100 font-bold uppercase tracking-widest mt-0.5">
+                                    <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.8)] ${isListening ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400 opacity-50'}`} />
+                                    {isListening ? 'Live Assist Active' : 'Performance Ready'}
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setIsCollapsed(true)}
+                            className="p-2 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-colors"
+                        >
+                            <IconX className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar bg-slate-50/10 dark:bg-slate-950/20 relative z-10">
+                        {messages.map((msg) => (
+                            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-500`}>
+                                <div className={`max-w-[90%] rounded-[1.5rem] px-5 py-4 text-sm shadow-sm transition-all hover:shadow-md ${msg.role === 'user'
+                                    ? 'bg-indigo-600 text-white rounded-br-none shadow-indigo-200 dark:shadow-none'
+                                    : msg.role === 'live'
+                                        ? 'bg-gradient-to-br from-rose-500 to-orange-500 text-white border-2 border-rose-400 px-6 py-5 rounded-3xl w-full shadow-2xl shadow-rose-200 dark:shadow-none flex flex-col gap-3 font-black uppercase tracking-tight'
+                                        : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-none border border-slate-100 dark:border-slate-700 font-medium leading-relaxed'
+                                    }`}>
+                                    {msg.role === 'live' && (
+                                        <div className="flex items-center justify-between mb-1">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+                                                <span className="text-[10px] font-black tracking-[0.2em] opacity-90">Live Intelligence Ping</span>
+                                            </div>
+                                            <IconSparkles className="w-4 h-4 opacity-80" />
+                                        </div>
+                                    )}
+                                    {msg.role === 'model' || msg.role === 'live' ? (
+                                        <RichMessageRenderer text={msg.text} />
+                                    ) : (
+                                        msg.text
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        {isTyping && (
+                            <div className="flex items-center gap-2 p-4 bg-white dark:bg-slate-800 rounded-2xl rounded-bl-none w-fit border border-slate-100 dark:border-slate-700 shadow-sm animate-pulse">
+                                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></div>
+                                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                            </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    <div className="p-6 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 relative z-20">
+                        <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="relative group/form">
+                            <input
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                placeholder="Ask Coach for tips..."
+                                className="w-full pl-6 pr-16 py-5 bg-slate-100 dark:bg-slate-800/50 rounded-[1.5rem] text-sm font-semibold focus:ring-4 focus:ring-indigo-500/10 border-2 border-transparent focus:border-indigo-500/30 dark:text-white transition-all shadow-inner outline-none"
+                            />
+                            <button
+                                type="submit"
+                                disabled={!input.trim() || isTyping}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-3 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 disabled:opacity-30 transition-all active:scale-90"
+                            >
+                                <IconSend className="w-5 h-5" />
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                {/* Floating Expand Button when Collapsed */}
+                {isCollapsed && (
+                    <button
+                        onClick={() => setIsCollapsed(false)}
+                        className="fixed bottom-32 left-8 z-[100] p-4 bg-indigo-600 text-white rounded-2xl shadow-2xl hover:scale-110 transition-all flex items-center gap-3 animate-in fade-in zoom-in duration-500 border border-white/20"
+                    >
+                        <IconBot className="w-6 h-6" />
+                        <span className="text-xs font-black uppercase tracking-widest pr-2">Coach Assist</span>
+                    </button>
+                )}
+
+                {/* Right Panel: Knowledge Content */}
                 <div className="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar bg-gradient-to-br from-indigo-50/20 via-transparent to-purple-50/20">
                     <div className="max-w-4xl mx-auto">
                         {activeTab === 'scripts' && (
@@ -252,7 +402,7 @@ export const EducationCenter: React.FC = () => {
                                         <div className="space-y-6">
                                             <div className="flex items-center gap-4">
                                                 <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-xl shadow-inner border border-indigo-100/50 dark:border-indigo-800/50">
-                                                    {script.icon === 'IconBriefcase' ? <IconBriefcase className="w-6 h-6" /> : <IconSparkles className="w-6 h-6" />}
+                                                    {script.icon === 'IconActivity' ? <IconActivity className="w-6 h-6" /> : <IconBriefcase className="w-6 h-6" />}
                                                 </div>
                                                 <h2 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tight">{script.title}</h2>
                                             </div>
@@ -285,7 +435,7 @@ export const EducationCenter: React.FC = () => {
                                                                         </div>
                                                                     )}
                                                                     <div className="space-y-4">
-                                                                        {section.lines?.map((line: any, idx: number) => renderScriptLine(line as any, idx, sectionId))}
+                                                                        {section.lines?.map((line, idx) => renderScriptLine(line, idx, sectionId))}
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -294,7 +444,7 @@ export const EducationCenter: React.FC = () => {
                                                 })}
                                             </div>
                                         </div>
-                                        {TRAINING_CONTENT.scripts.length > 1 && TRAINING_CONTENT.scripts[0] === script && <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-200 dark:via-slate-800 to-transparent my-12" />}
+                                        <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-200 dark:via-slate-800 to-transparent my-12" />
                                     </React.Fragment>
                                 ))}
                             </div>
@@ -302,7 +452,6 @@ export const EducationCenter: React.FC = () => {
 
                         {activeTab === 'battlecard' && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                {/* One-Liners Section */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {TRAINING_CONTENT.oneLiners?.map((item, i) => (
                                         <div key={i} className="bg-indigo-600 p-6 rounded-[2rem] text-white shadow-xl flex flex-col justify-between group hover:rotate-1 transition-transform">
@@ -315,7 +464,6 @@ export const EducationCenter: React.FC = () => {
                                     ))}
                                 </div>
 
-                                {/* Objections Drill-Down */}
                                 <div className="space-y-4">
                                     <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest px-4">Master Objection Handling</h3>
                                     <div className="grid grid-cols-1 gap-4">
@@ -335,79 +483,98 @@ export const EducationCenter: React.FC = () => {
                                         ))}
                                     </div>
                                 </div>
-
-                                {/* Call Quality Checklist */}
-                                <div className="bg-gradient-to-br from-slate-900 to-indigo-950 p-10 rounded-[3rem] text-white border border-white/5 shadow-2xl">
-                                    <h3 className="text-xl font-black uppercase tracking-tight mb-8 flex items-center gap-4">
-                                        <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30"><IconCheck className="w-6 h-6" /></div>
-                                        Expert Call Checklist
-                                    </h3>
-                                    <div className="space-y-4">
-                                        {(TRAINING_CONTENT as any).callQualityChecklist?.map((item: string, i: number) => (
-                                            <div key={i} className="flex items-center gap-6 p-5 bg-white/5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all">
-                                                <span className="text-indigo-400 font-black text-lg">0{i + 1}</span>
-                                                <p className="text-base font-bold text-indigo-50">{item}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
                             </div>
                         )}
 
                         {activeTab === 'info' && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                <div className="bg-gradient-to-br from-[#1e293b] via-[#0f172a] to-[#020617] rounded-[3rem] p-12 text-white shadow-2xl relative overflow-hidden group border border-white/5">
-                                    <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
-                                    <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/10 rounded-full blur-[100px] translate-y-1/2 -translate-x-1/2" />
-
-                                    <div className="relative z-10">
-                                        <div className="flex items-center gap-4 mb-8">
-                                            <div className="p-4 bg-white/10 backdrop-blur-xl rounded-[2rem] border border-white/10 shadow-2xl">
-                                                <IconSparkles className="w-10 h-10 text-indigo-400" />
-                                            </div>
-                                            <div>
-                                                <h2 className="text-4xl font-black tracking-tight">{TRAINING_CONTENT.productInfo.title}</h2>
-                                                <div className="inline-flex items-center gap-3 px-6 py-2 bg-indigo-500/20 backdrop-blur-xl rounded-full text-[10px] font-black uppercase tracking-[0.2em] border border-indigo-500/30 mt-2">
-                                                    Target: <span className="text-emerald-400">{TRAINING_CONTENT.productInfo.debtThreshold} IRS/STATE Debt</span>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 p-8 opacity-5 transition-transform group-hover:scale-110">
+                                            <IconInfo className="w-16 h-16" />
+                                        </div>
+                                        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-indigo-500 mb-6 flex items-center gap-2">
+                                            Step 1: {TRAINING_CONTENT.theProcess.step1.title}
+                                        </h3>
+                                        <div className="space-y-4">
+                                            {TRAINING_CONTENT.theProcess.step1.actions.map((action: string, i: number) => (
+                                                <div key={i} className="flex gap-3 text-sm font-medium text-slate-600 dark:text-slate-400">
+                                                    <span className="text-indigo-400 font-black">•</span>
+                                                    {action}
                                                 </div>
+                                            ))}
+                                            <div className="mt-6 p-4 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-2xl text-xs font-bold text-indigo-600 dark:text-indigo-300 italic">
+                                                Final Result: {TRAINING_CONTENT.theProcess.step1.output}
                                             </div>
                                         </div>
+                                    </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
-                                            {TRAINING_CONTENT.productInfo.keyPoints.map((point, i) => (
-                                                <div key={i} className="p-8 bg-white/5 backdrop-blur-md rounded-[2.5rem] border border-white/10 hover:bg-white/10 transition-all group/card hover:scale-[1.02] duration-300">
-                                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-indigo-300 mb-3 opacity-60">{point.title}</h3>
-                                                    <p className="text-xl font-bold leading-tight group-hover/card:translate-x-1 transition-transform">{point.detail}</p>
+                                    <div className="bg-white dark:bg-slate-900/50 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 p-8 opacity-5 transition-transform group-hover:scale-110">
+                                            <IconSparkles className="w-16 h-16" />
+                                        </div>
+                                        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-emerald-500 mb-6 flex items-center gap-2">
+                                            Step 2: {TRAINING_CONTENT.theProcess.step2.title}
+                                        </h3>
+                                        <div className="space-y-4">
+                                            {TRAINING_CONTENT.theProcess.step2.actions.map((action: string, i: number) => (
+                                                <div key={i} className="flex gap-3 text-sm font-medium text-slate-600 dark:text-slate-400">
+                                                    <span className="text-emerald-400 font-black">•</span>
+                                                    {action}
                                                 </div>
                                             ))}
                                         </div>
+                                    </div>
+                                </div>
 
-                                        {/* Comparison Table */}
-                                        <div className="bg-white/5 backdrop-blur-md rounded-[2.5rem] border border-white/10 overflow-hidden">
-                                            <div className="px-8 py-6 border-b border-white/10 bg-white/5">
-                                                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-indigo-300">Market Advantage Comparison</h3>
+                                <div className="bg-gradient-to-br from-[#1e293b] via-[#0f172a] to-[#020617] rounded-[3rem] p-12 text-white shadow-2xl relative overflow-hidden group border border-white/5">
+                                    <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
+                                    <h2 className="text-3xl font-black tracking-tight mb-8">Partner Compensation Matrix</h2>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {TRAINING_CONTENT.compensation.map((c: any, i: number) => (
+                                            <div key={i} className="p-8 bg-white/5 backdrop-blur-md rounded-[2.5rem] border border-white/10 hover:bg-white/10 transition-all group/card">
+                                                <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-300 mb-2 opacity-60">{c.partner}</h4>
+                                                <div className="text-2xl font-black text-white mb-2">{c.amount}</div>
+                                                <p className="text-xs text-slate-400 font-medium leading-relaxed">{c.breakdown}</p>
                                             </div>
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-left text-sm">
-                                                    <thead>
-                                                        <tr className="border-b border-white/5 bg-white/5 text-[10px] uppercase font-black tracking-widest text-slate-400">
-                                                            <th className="px-8 py-4">Feature</th>
-                                                            <th className="px-8 py-4 text-indigo-400">Community Tax</th>
-                                                            <th className="px-8 py-4">Local CPA / Firm</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-white/5">
-                                                        {TRAINING_CONTENT.productInfo.comparisons?.map((row, i) => (
-                                                            <tr key={i} className="group/row hover:bg-white/5 transition-colors">
-                                                                <td className="px-8 py-5 font-bold text-slate-400">{row.feature}</td>
-                                                                <td className="px-8 py-5 font-black text-indigo-300">{row.communityTax}</td>
-                                                                <td className="px-8 py-5 text-slate-500">{row.localCPA}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm relative mb-12">
+                                    <h3 className="text-xl font-black tracking-tight mb-8">Service Pricing Matrix</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-700">
+                                            <div className="text-[10px] font-black uppercase text-indigo-500 mb-2">Phase 1: Investigation</div>
+                                            <div className="text-2xl font-black text-slate-900 dark:text-white mb-2">{TRAINING_CONTENT.pricing.investigation.standard}</div>
+                                            <p className="text-xs text-slate-500 font-medium">Standard Pricing based on debt amount.</p>
+                                            <div className="mt-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold rounded-xl border border-emerald-100/50">
+                                                Partner Discounted Rate: {TRAINING_CONTENT.pricing.investigation.partnerDiscounted}
                                             </div>
                                         </div>
+                                        <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-700 flex flex-col justify-center">
+                                            <div className="text-[10px] font-black uppercase text-indigo-500 mb-2">Phase 2: Resolution</div>
+                                            <div className="text-xl font-black text-slate-900 dark:text-white italic">"Custom Flat Fee"</div>
+                                            <p className="text-xs text-slate-500 font-medium mt-2">Quoted based on strategy developed in Step 1.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm relative">
+                                    <h3 className="text-xl font-black tracking-tight mb-8">Integrated Partner Portals</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        {TRAINING_CONTENT.portals.map((portal: any, i: number) => (
+                                            <a
+                                                key={i}
+                                                href={`https://${portal.url}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-indigo-500/30 transition-all group"
+                                            >
+                                                <span className="text-xs font-black text-slate-800 dark:text-white mb-1">{portal.name}</span>
+                                                <span className="text-[8px] font-bold text-slate-400 group-hover:text-indigo-500 transition-colors uppercase tracking-widest">Open Portal</span>
+                                            </a>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
@@ -432,69 +599,6 @@ export const EducationCenter: React.FC = () => {
                                 ))}
                             </div>
                         )}
-                    </div>
-                </div>
-
-                {/* Right Panel: AI Assistant */}
-                <div className="w-full lg:w-[400px] h-[400px] lg:h-full shrink-0 bg-white dark:bg-[#0f172a] border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.1)] z-10 relative overflow-hidden">
-                    {/* Decorative Background */}
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600/5 rounded-full blur-3xl -z-1" />
-                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-violet-600/5 rounded-full blur-3xl -z-1" />
-
-                    <div className="p-8 bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-between shadow-xl relative z-20">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl border border-white/20 shadow-inner group transition-transform hover:rotate-12">
-                                <IconBot className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-black text-white uppercase tracking-widest">Coach Assist</h3>
-                                <div className="flex items-center gap-2 text-[9px] text-indigo-100 font-bold uppercase tracking-widest mt-0.5">
-                                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                                    Active Coaching Mode
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar bg-slate-50/10 dark:bg-slate-950/20 relative z-10">
-                        {messages.map((msg) => (
-                            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-500`}>
-                                <div className={`max-w-[85%] rounded-[1.5rem] px-5 py-4 text-sm shadow-sm transition-all hover:shadow-md ${msg.role === 'user'
-                                    ? 'bg-indigo-600 text-white rounded-br-none shadow-indigo-200 dark:shadow-none'
-                                    : msg.role === 'live'
-                                        ? 'bg-rose-50 text-rose-600 border border-rose-100 dark:bg-rose-950/30 dark:border-rose-800 text-[10px] font-black uppercase tracking-[0.2em] w-full text-center py-3'
-                                        : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-none border border-slate-100 dark:border-slate-700 font-medium leading-relaxed'
-                                    }`}>
-                                    {msg.text}
-                                </div>
-                            </div>
-                        ))}
-                        {isTyping && (
-                            <div className="flex items-center gap-2 p-4 bg-white dark:bg-slate-800 rounded-2xl rounded-bl-none w-fit border border-slate-100 dark:border-slate-700 shadow-sm animate-pulse">
-                                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></div>
-                                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-                                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
-                            </div>
-                        )}
-                        <div ref={messagesEndRef} />
-                    </div>
-
-                    <div className="p-6 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 relative z-20">
-                        <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="relative group/form">
-                            <input
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                placeholder="Ask Coach for tips..."
-                                className="w-full pl-6 pr-16 py-5 bg-slate-100 dark:bg-slate-800/50 rounded-[1.5rem] text-sm font-semibold focus:ring-4 focus:ring-indigo-500/10 border-2 border-transparent focus:border-indigo-500/30 dark:text-white transition-all shadow-inner outline-none"
-                            />
-                            <button
-                                type="submit"
-                                disabled={!input.trim() || isTyping}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 p-3 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 disabled:opacity-30 transition-all active:scale-90"
-                            >
-                                <IconSend className="w-5 h-5" />
-                            </button>
-                        </form>
                     </div>
                 </div>
             </div>

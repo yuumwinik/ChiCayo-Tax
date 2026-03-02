@@ -1,17 +1,19 @@
+
 import React, { useMemo } from 'react';
-import { Appointment, AppointmentStage, User, View } from '../types';
-// Fix: Add missing IconTrendingUp import
+import { Appointment, AppointmentStage, User, View, PayCycle } from '../types';
 import { IconSparkles, IconTrophy, IconDollarSign, IconClock, IconArrowRight, IconActivity, IconTrendingUp } from './Icons';
 import { formatCurrency } from '../utils/dateUtils';
 
 interface GlobalWinTickerProps {
   appointments: Appointment[];
   users: User[];
+  activeCycle?: PayCycle;
   onViewAppt?: (id: string) => void;
   onNavigate?: (view: View) => void;
+  visible: boolean;
+  onToggle: () => void;
 }
 
-// Fix: Define interface for ticker events to handle optional properties and avoid type inference errors
 interface TickerEvent {
   type: string;
   text: string;
@@ -20,20 +22,25 @@ interface TickerEvent {
   actionLabel?: string;
 }
 
-export const GlobalWinTicker: React.FC<GlobalWinTickerProps> = ({ appointments, users, onViewAppt, onNavigate }) => {
-  // Fix: Explicitly type the memoized array to ensure type safety for optional action members
+export const GlobalWinTicker: React.FC<GlobalWinTickerProps> = ({ appointments, users, activeCycle, onViewAppt, onNavigate, visible, onToggle }) => {
   const tickerEvents = useMemo<TickerEvent[]>(() => {
-    const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay());
-    weekStart.setHours(0, 0, 0, 0);
+    if (!activeCycle) return [];
 
-    const onboarded = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
+    const start = new Date(activeCycle.startDate).getTime();
+    const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
+
+    const onboarded = appointments.filter(a => {
+      if (a.stage !== AppointmentStage.ONBOARDED && a.stage !== AppointmentStage.ACTIVATED) return false;
+      const onboardedTime = new Date(a.onboardedAt || a.scheduledAt).getTime();
+      return onboardedTime >= start && onboardedTime <= end;
+    });
+
+    if (onboarded.length === 0) return [];
+
     const recentWins = [...onboarded]
       .sort((a, b) => new Date(b.onboardedAt || b.scheduledAt).getTime() - new Date(a.onboardedAt || a.scheduledAt).getTime())
-      .slice(0, 10);
+      .slice(0, 5);
 
-    // 1. Detailed Win Announcements with Action Link
     const winMessages: TickerEvent[] = recentWins.map(win => {
       const agent = users.find(u => u.id === win.userId);
       const agentFirstName = agent?.name?.split(' ')[0] || 'Agent';
@@ -44,104 +51,38 @@ export const GlobalWinTicker: React.FC<GlobalWinTickerProps> = ({ appointments, 
         text: `${agentFirstName.toUpperCase()} ONBOARDED ${clientFirstName.toUpperCase()} — WON ${amount}!`,
         icon: <IconTrophy className="w-3.5 h-3.5 text-amber-400" />,
         action: () => onViewAppt?.(win.id),
-        actionLabel: 'VIEW CARD'
+        actionLabel: 'VIEW'
       };
     });
 
-    // 2. Weekly Production Bank
-    const weekTotalCents = onboarded
-      .filter(a => new Date(a.onboardedAt || a.scheduledAt) >= weekStart)
-      .reduce((sum, a) => sum + (a.earnedAmount || 0), 0);
-
+    const cycleTotalCents = onboarded.reduce((sum, a) => sum + (a.earnedAmount || 0), 0);
     const bankMessage: TickerEvent = {
       type: 'bank',
-      text: `WEEKLY TEAM PRODUCTION BANK: ${formatCurrency(weekTotalCents)} — BOOM! 💥`,
+      text: `ACTIVE CYCLE PRODUCTION: ${formatCurrency(cycleTotalCents)} — BOOM! 💥`,
       icon: <IconDollarSign className="w-3.5 h-3.5 text-emerald-400" />,
       action: () => onNavigate?.('earnings-full'),
-      actionLabel: 'HISTORY'
+      actionLabel: 'STATS'
     };
 
-    // 3. Goal Tracking
-    const nextMilestone = Math.ceil((weekTotalCents / 100) / 50) * 50;
-    const distance = nextMilestone - (weekTotalCents / 100);
-    const goalMessage: TickerEvent = {
-      type: 'goal',
-      text: `ONLY $${distance.toFixed(0)} AWAY FROM THE $${nextMilestone} TEAM GOAL! 🎯`,
-      icon: <IconActivity className="w-3.5 h-3.5 text-indigo-400" />
-    };
+    return [...winMessages, bankMessage].sort(() => Math.random() - 0.5);
+  }, [appointments, users, activeCycle, onViewAppt, onNavigate]);
 
-    // 4. Hot Streaks
-    const threeDaysAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
-    const streakMap: Record<string, number> = {};
-    onboarded
-      .filter(a => new Date(a.onboardedAt || a.scheduledAt) >= threeDaysAgo)
-      .forEach(a => { streakMap[a.userId] = (streakMap[a.userId] || 0) + 1; });
-
-    const streakMessages: TickerEvent[] = Object.entries(streakMap)
-      .filter(([_, count]) => count >= 2)
-      .map(([userId, count]) => {
-        const name = users.find(u => u.id === userId)?.name?.split(' ')[0] || 'Agent';
-        return {
-          type: 'streak',
-          text: `STREAK ALERT: ${name.toUpperCase()} IS ON A ${count}-WIN TEAR! 🔥`,
-          icon: <IconSparkles className="w-3.5 h-3.5 text-orange-400" />
-        };
-      });
-
-    // 5. Closing Potential (Sum of Pending)
-    const pending = appointments.filter(a => a.stage === AppointmentStage.PENDING || a.stage === AppointmentStage.RESCHEDULED);
-    const potentialCents = pending.length * 200; // Estimated 
-    const potentialMessage: TickerEvent = {
-      type: 'potential',
-      text: `CLOSING POTENTIAL: ${formatCurrency(potentialCents)} IN PENDING DEALS! 🚀`,
-      icon: <IconTrendingUp className="w-3.5 h-3.5 text-blue-400" />,
-      action: () => onNavigate?.('dashboard'),
-      actionLabel: 'GO TO FUNNEL'
-    };
-
-    // 6. Encouragement
-    const encouragements: TickerEvent[] = [
-      "KEEP CRUSHING THE PHONES! ☎️",
-      "WIN THE DAY, ONE DIAL AT A TIME!",
-      "THE NEXT CALL IS THE ONE!",
-      "TEAM WORK MAKES THE DREAM WORK!"
-    ].map(t => ({ type: 'encouragement', text: t, icon: <IconSparkles className="w-3.5 h-3.5 text-indigo-300" /> }));
-
-    // Combine and Randomly Shuffle
-    const all = [...winMessages, bankMessage, goalMessage, ...streakMessages, potentialMessage, ...encouragements]
-      .sort(() => Math.random() - 0.5);
-
-    return all;
-  }, [appointments, users, onViewAppt, onNavigate]);
-
-  if (tickerEvents.length === 0) return null;
+  if (!visible || tickerEvents.length === 0) return null;
 
   return (
     <div className="w-full bg-slate-900 overflow-hidden h-11 flex items-center shrink-0 border-b border-indigo-500/20 shadow-xl relative z-[60] group/ticker">
-      {/* Edge Fades */}
       <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-slate-900 via-slate-900/80 to-transparent z-20 pointer-events-none"></div>
       <div className="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-slate-900 via-slate-900/80 to-transparent z-20 pointer-events-none"></div>
 
-      {/* The Rolling Strip - Reversed Direction (Left to Right). Duration slowed to 180s */}
-      <div className="flex animate-[scroll_180s_linear_infinite] whitespace-nowrap items-center h-full hover:[animation-play-state:paused]">
-        {/* Triple render for super long seamless loop */}
-        {[...tickerEvents, ...tickerEvents, ...tickerEvents].map((event, i) => (
+      <div className="flex animate-[scroll_120s_linear_infinite] whitespace-nowrap items-center h-full hover:[animation-play-state:paused]">
+        {[...tickerEvents, ...tickerEvents, ...tickerEvents, ...tickerEvents].map((event, i) => (
           <div key={i} className="flex items-center gap-4 px-12 h-full border-r border-slate-800/50">
-            <div className={`p-2 rounded-xl transition-all duration-300 hover:scale-125 ${event.type === 'win' ? 'bg-amber-500/10' :
-                event.type === 'bank' ? 'bg-emerald-500/10' :
-                  event.type === 'streak' ? 'bg-rose-500/10' :
-                    event.type === 'potential' ? 'bg-blue-500/10' : 'bg-indigo-500/10'
-              }`}>
+            <div className={`p-2 rounded-xl transition-all duration-300 hover:scale-125 ${event.type === 'win' ? 'bg-amber-500/10' : 'bg-emerald-500/10'}`}>
               {event.icon}
             </div>
-            <span className={`text-[12px] font-black tracking-[0.1em] transition-colors ${event.type === 'win' ? 'text-white' :
-                event.type === 'bank' ? 'text-emerald-400' :
-                  event.type === 'streak' ? 'text-rose-400' :
-                    event.type === 'potential' ? 'text-blue-300' : 'text-indigo-300'
-              }`}>
+            <span className={`text-[12px] font-black tracking-[0.1em] transition-colors ${event.type === 'win' ? 'text-white' : 'text-emerald-400'}`}>
               {event.text}
             </span>
-            {/* Fix: Type narrowing ensures event.action and event.actionLabel are accessible */}
             {event.action && (
               <button
                 onClick={event.action}
@@ -157,7 +98,7 @@ export const GlobalWinTicker: React.FC<GlobalWinTickerProps> = ({ appointments, 
 
       <style>{`
         @keyframes scroll {
-          0% { transform: translateX(-50%); }
+          0% { transform: translateX(-25%); }
           100% { transform: translateX(0); }
         }
       `}</style>

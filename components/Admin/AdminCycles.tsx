@@ -6,7 +6,6 @@ import * as XLSX from 'xlsx';
 import { IconPlus, IconCycle, IconTrash, IconDollarSign, IconChevronUp, IconChevronDown, IconEdit, IconCheck, IconX, IconClock, IconSparkles, IconLock, IconUsers, IconDownload, IconCalendar, IconBot, IconSearch, IconActivity, IconTransfer, IconBriefcase } from '../Icons';
 import { CustomDatePicker } from '../CustomDatePicker';
 import { DeleteConfirmationModal } from '../DeleteConfirmationModal';
-import { GoogleGenAI, Type } from "@google/genai";
 import { CustomSelect } from '../CustomSelect';
 
 interface AdminCyclesProps {
@@ -17,23 +16,26 @@ interface AdminCyclesProps {
     commissionRate?: number;
     selfCommissionRate?: number;
     referralRate?: number;
-    onUpdateMasterCommissions: (std: number, self: number, referral: number, syncRetroactive: boolean) => void;
+    activationRate?: number;
+    onUpdateMasterCommissions: (std: number, self: number, referral: number, activation: number) => void;
     onImportReferrals?: (rows: { name: string, phone: string, referrals: number, date: string }[]) => void;
     appointments?: Appointment[];
     allUsers?: User[];
     onManualReferral?: (clientId: string, count: number) => void;
     onDeleteReferral?: (clientId: string, entryId: string) => void;
+    allIncentives?: any[];
 }
 
 export const AdminCycles: React.FC<AdminCyclesProps> = ({
     cycles, onAddCycle, onEditCycle, onDeleteCycle,
-    commissionRate = 200, selfCommissionRate = 300, referralRate = 200,
+    commissionRate = 200, selfCommissionRate = 300, referralRate = 200, activationRate = 1000,
     onUpdateMasterCommissions,
     onImportReferrals,
     appointments = [],
     allUsers = [],
     onManualReferral,
-    onDeleteReferral
+    onDeleteReferral,
+    allIncentives = []
 }) => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -41,6 +43,7 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
     const [tempStd, setTempStd] = useState((commissionRate / 100).toString());
     const [tempSelf, setTempSelf] = useState((selfCommissionRate / 100).toString());
     const [tempReferral, setTempReferral] = useState((referralRate / 100).toString());
+    const [tempActivation, setTempActivation] = useState((activationRate / 100).toString());
     const [syncRetroactive, setSyncRetroactive] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -59,202 +62,111 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
         if (isLocked) {
             setTempStd((commissionRate / 100).toString());
             setTempSelf((selfCommissionRate / 100).toString());
-            setTempReferral((referralRate / 100).toString());
+            setTempActivation((activationRate / 100).toString());
         }
-    }, [commissionRate, selfCommissionRate, referralRate, isLocked]);
+    }, [commissionRate, selfCommissionRate, referralRate, activationRate, isLocked]);
 
     const handleApplySync = () => {
         onUpdateMasterCommissions(
             Math.round(parseFloat(tempStd) * 100),
             Math.round(parseFloat(tempSelf) * 100),
-            Math.round(parseFloat(tempReferral) * 100),
-            syncRetroactive
+            Math.round(parseFloat(tempReferral) * 100), // Legacy or 0
+            Math.round(parseFloat(tempActivation) * 100)
         );
         setIsLocked(true);
+    };
+
+    const handleAiIntake = async () => {
+        if (!aiInput.trim() || isAiProcessing) return;
+        setIsAiProcessing(true);
+        setTimeout(() => { // Artificial "thinking" delay for UI feedback
+            try {
+                const onboarded = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
+                const results: any[] = [];
+                const lines = aiInput.split('\n');
+
+                lines.forEach(line => {
+                    const lower = line.toLowerCase();
+                    // Basic lookahead for names and numbers in the text line
+                    onboarded.forEach(appt => {
+                        const nameLower = appt.name.toLowerCase();
+                        if (lower.includes(nameLower)) {
+                            // Search for digits/counts in the line e.g. "referred 2"
+                            const countMatch = lower.match(/(\d+)\s+(people|leads|referrals|person|sent)/i) || lower.match(/sent\s+(\d+)/i) || lower.match(/(\d+)/);
+                            const delta = countMatch ? parseInt(countMatch[1]) : 1;
+
+                            results.push({
+                                clientId: appt.id,
+                                name: appt.name,
+                                delta,
+                                referrals: (appt.referralCount || 0) + delta,
+                                agentName: allUsers.find(u => u.id === appt.userId)?.name || 'Unknown'
+                            });
+                        }
+                    });
+                });
+
+                if (results.length > 0) {
+                    setPreviewData({ rows: results, source: 'ai' });
+                } else {
+                    alert("Local Auditor couldn't find any clear name matches in your text.");
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Audit failed.");
+            } finally {
+                setIsAiProcessing(false);
+            }
+        }, 800);
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
 
         reader.onload = async (event) => {
-            if (isExcel) {
-                const data = new Uint8Array(event.target?.result as ArrayBuffer);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const rows: any[] = XLSX.utils.sheet_to_json(worksheet);
+            const data = new Uint8Array(event.target?.result as ArrayBuffer);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const rows: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-                const referrals = rows.filter(r =>
-                    (r.Type && String(r.Type).toLowerCase().includes('referral')) ||
-                    (r.type && String(r.type).toLowerCase().includes('referral'))
+            const onboarded = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
+            const results: any[] = [];
+
+            rows.forEach(row => {
+                const rName = (row.Name || row.name || "").toString().toLowerCase();
+                const rPhone = (row.Phone || row.phone || "").toString().replace(/\D/g, '');
+
+                const target = onboarded.find(a =>
+                    a.name.toLowerCase() === rName ||
+                    (a.phone && a.phone.replace(/\D/g, '') === rPhone)
                 );
 
-                if (referrals.length > 0) {
-                    setIsAiProcessing(true);
-                    await runAiAudit(referrals);
-                    setIsAiProcessing(false);
-                } else {
-                    alert("No 'Referral' types found in this sheet.");
+                if (target) {
+                    const delta = parseInt(row.Referrals || row.referrals || row.Count || row.count || "1");
+                    results.push({
+                        clientId: target.id,
+                        name: target.name,
+                        delta,
+                        referrals: (target.referralCount || 0) + delta,
+                        phone: target.phone,
+                        agentName: allUsers.find(u => u.id === target.userId)?.name || 'Unknown'
+                    });
                 }
-            } else {
-                // Legacy CSV path
-                const text = event.target?.result as string;
-                const rows = text.split('\n').slice(1).filter(r => r.trim());
-                const parsedData = rows.map(row => {
-                    const cols = row.split(',').map(c => c.replace(/^"|"$/g, '').trim());
-                    return { date: cols[1] || cols[0], name: cols[4] || '', phone: cols[5] || '', referrals: parseInt(cols[9] || '0') };
-                }).filter(d => (d.name || d.phone) && !isNaN(d.referrals));
+            });
 
-                if (parsedData.length > 0) {
-                    setPreviewData({ rows: parsedData, source: 'file' });
-                }
+            if (results.length > 0) {
+                setPreviewData({ rows: results, source: 'file' });
+            } else {
+                alert("No matches found in database for this file.");
             }
         };
 
-        if (isExcel) {
-            reader.readAsArrayBuffer(file);
-        } else {
-            reader.readAsText(file);
-        }
+        reader.readAsArrayBuffer(file);
         e.target.value = '';
     };
 
-    const runAiAudit = async (referralRows: any[]) => {
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const onboarded = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
-
-            // Prepare a clean list of referral candidates from the file
-            const candidates = referralRows.map(r => ({
-                name: r.Name || r.name || 'Unknown',
-                phone: r["Referrer Phone"] || r.phone || '',
-                commission: r[" Commission "] || r.commission || 0
-            }));
-
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash-exp',
-                contents: `Review these referral records from an Excel export and match them to our database clients. 
-              Each referral must belong to an Agent who owns the onboarded client.
-              
-              EXCEL RECORDS:
-              ${JSON.stringify(candidates)}
-              
-              DATABASE CLIENTS:
-              ${onboarded.map(a => `${a.name} (ID:${a.id}, Phone:${a.phone}, Agent:${allUsers.find(u => u.id === a.userId)?.name || 'Unknown'})`).join('\n')}
-              
-              RULES:
-              1. A commission of 2 ($2.00) equals 1 referral.
-              2. Match Excel "Name" or "Referrer Phone" to Database "Name" or "Phone" (fuzzy matching allowed).
-              3. Only include rows that match a database client who is already ONBOARDED.
-              4. Return the new referral count to ADD (so for commission 2, add 1).
-              5. Identify the Agent (Name) who owns this client.
-              
-              Output JSON only as an array of objects.`,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                clientId: { type: Type.STRING },
-                                name: { type: Type.STRING },
-                                delta: { type: Type.NUMBER },
-                                agentName: { type: Type.STRING },
-                                originalRowIndex: { type: Type.NUMBER }
-                            },
-                            required: ['clientId', 'name', 'delta']
-                        }
-                    }
-                }
-            });
-
-            const results = JSON.parse(response.text);
-            if (results.length > 0) {
-                setPreviewData({
-                    rows: results.map((r: any) => {
-                        const target = appointments.find(a => a.id === r.clientId);
-                        return {
-                            name: r.name,
-                            delta: r.delta,
-                            clientId: r.clientId,
-                            referrals: (target?.referralCount || 0) + r.delta,
-                            phone: target?.phone || '',
-                            agentName: allUsers.find(u => u.id === target?.userId)?.name || r.agentName
-                        };
-                    }),
-                    source: 'ai'
-                });
-            } else {
-                alert("AI couldn't find any clear matches for these referrals.");
-            }
-        } catch (e) {
-            console.error(e);
-            alert("AI Audit failed. Please check your API key and file format.");
-        }
-    };
-
-    const handleAiIntake = async () => {
-        if (!aiInput.trim() || isAiProcessing) return;
-        setIsAiProcessing(true);
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const onboarded = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
-
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash-exp',
-                contents: aiInput,
-                config: {
-                    systemInstruction: `You are the Referral Auditor. Parse natural language into a manual referral update.
-                  CLIENTS IN DB: ${onboarded.map(a => `${a.name} (id:${a.id}, Agent:${allUsers.find(u => u.id === a.userId)?.name || 'Unknown'})`).join(', ')}.
-                  RULES:
-                  1. Identify all clients mentioned and their referral counts.
-                  2. For each, find the closest name match from the DB.
-                  3. Identify the Agent assigned to each client.
-                  Output JSON only as an array of objects.`,
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                clientId: { type: Type.STRING },
-                                newReferralCount: { type: Type.NUMBER },
-                                name: { type: Type.STRING },
-                                agentName: { type: Type.STRING }
-                            },
-                            required: ['clientId', 'newReferralCount']
-                        }
-                    }
-                }
-            });
-
-            const results = JSON.parse(response.text);
-            if (results.length > 0) {
-                setPreviewData({
-                    rows: results.map((res: any) => {
-                        const target = appointments.find(a => a.id === res.clientId);
-                        return {
-                            name: target?.name || res.name,
-                            phone: target?.phone || '',
-                            referrals: (target?.referralCount || 0) + res.newReferralCount,
-                            delta: res.newReferralCount,
-                            clientId: res.clientId,
-                            agentName: allUsers.find(u => u.id === target?.userId)?.name || res.agentName
-                        };
-                    }),
-                    source: 'ai'
-                });
-            }
-        } catch (e) {
-            alert("Taxter couldn't decipher that. Try: 'Client John Doe referred 2 today.'");
-        } finally {
-            setIsAiProcessing(false);
-        }
-    };
 
     const confirmSync = async () => {
         if (!previewData) return;
@@ -361,8 +273,8 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
                             <input disabled={isLocked} value={tempSelf} onChange={e => setTempSelf(e.target.value)} type="number" className="w-24 px-3 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none font-black text-center text-lg focus:ring-2 focus:ring-indigo-500 transition-all" />
                         </div>
                         <div className="space-y-1.5 text-center">
-                            <label className="text-[9px] font-black text-rose-500 uppercase tracking-widest">Referral</label>
-                            <input disabled={isLocked} value={tempReferral} onChange={e => setTempReferral(e.target.value)} type="number" className="w-24 px-3 py-3 rounded-2xl bg-rose-50 dark:bg-rose-900/20 border-none font-black text-center text-lg text-rose-600 focus:ring-2 focus:ring-rose-500 transition-all" />
+                            <label className="text-[9px] font-black text-amber-500 uppercase tracking-widest">Activation</label>
+                            <input disabled={isLocked} value={tempActivation} onChange={e => setTempActivation(e.target.value)} type="number" className="w-24 px-3 py-3 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border-none font-black text-center text-lg text-amber-600 focus:ring-2 focus:ring-amber-500 transition-all" />
                         </div>
                         {!isLocked && <button onClick={handleApplySync} className="px-8 py-3.5 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-indigo-700 shadow-2xl transition-all animate-in zoom-in-95">Sync & Lock</button>}
                     </div>
@@ -426,7 +338,7 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
                             <div className="p-2.5 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-200 dark:shadow-none"><IconUsers className="w-6 h-6" /></div>
                             Referral Sync Center
                         </h3>
-                        <p className="text-xs text-slate-500 font-bold mt-1">Intelligent intake: Sync reports, AI Joe Auditor, or manual ledger lookup.</p>
+                        <p className="text-xs text-slate-500 font-bold mt-1">Intelligent intake: Sync reports, Local Data Auditor, or manual ledger lookup.</p>
                     </div>
                     <div className="bg-slate-50 dark:bg-slate-800 p-1.5 rounded-2xl flex gap-1">
                         <button onClick={() => setShowManualSync(false)} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!showManualSync ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-400'}`}>Report Sync</button>
@@ -496,7 +408,8 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
                                     {onboardedList.map(appt => {
                                         const agent = allUsers.find(u => u.id === appt.userId);
                                         const isSelfOnboard = appt.aeName === agent?.name;
-                                        const totalEarned = (appt.earnedAmount || 0) + ((appt.referralCount || 0) * referralRate);
+                                        const apptIncentives = (allIncentives || []).filter((i: any) => i.related_appointment_id === appt.id);
+                                        const totalEarned = (appt.earnedAmount || 0) + apptIncentives.reduce((s: number, i: any) => s + (i.amount_cents || 0), 0);
                                         const isExpanded = expandedClientId === appt.id;
 
                                         return (

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { IconTrophy, IconSparkles, IconActivity, IconX } from './Icons';
 
 interface CelebrationOverlayProps {
-    type: '100_ONBOARDS' | '100_SELF' | '500_EARNINGS' | '100_SINGLE_CYCLE' | 'STREAK_5_HOUR';
+    type: '100_ONBOARDS' | '100_SELF' | '500_EARNINGS' | '1000_EARNINGS' | '100_SINGLE_CYCLE' | 'STREAK_5_HOUR' | 'FIRST_ACTIVATION' | 'ACTIVATION_5' | 'ACTIVATION_10';
     onClose: () => void;
 }
 
@@ -25,6 +25,30 @@ export const CelebrationOverlay: React.FC<CelebrationOverlayProps> = ({ type, on
             subtitle: "$500 Lifetime Profit reached",
             icon: <IconSparkles className="w-20 h-20 text-emerald-500" />,
             color: "from-emerald-500 to-teal-600"
+        },
+        '1000_EARNINGS': {
+            title: "Master of Wealth",
+            subtitle: "$1,000 Lifetime Profit reached",
+            icon: <IconTrophy className="w-20 h-20 text-indigo-500 animate-bounce" />,
+            color: "from-indigo-600 via-purple-600 to-pink-600"
+        },
+        'FIRST_ACTIVATION': {
+            title: "First Spark!",
+            subtitle: "Your first Partner Activation",
+            icon: <IconSparkles className="w-20 h-20 text-amber-500" />,
+            color: "from-amber-400 to-orange-500"
+        },
+        'ACTIVATION_5': {
+            title: "Referral Pro",
+            subtitle: "5 Active Referral Partners",
+            icon: <IconActivity className="w-20 h-20 text-emerald-500" />,
+            color: "from-emerald-400 to-teal-600"
+        },
+        'ACTIVATION_10': {
+            title: "Referral Legend",
+            subtitle: "10 Active Referral Partners",
+            icon: <IconTrophy className="w-20 h-20 text-rose-500" />,
+            color: "from-rose-500 to-pink-600"
         },
         '100_SINGLE_CYCLE': {
             title: "Weekly Legend",

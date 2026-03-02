@@ -32,7 +32,11 @@ interface AdminDashboardProps {
     agentStats: Record<string, {
       onboards: number;
       activations: number;
-      totalReferrals: number;
+      selfActivations: number;
+      crossActivations: number;
+      wasActivatedByOthers: number;
+      selfOnboardActivations: number;
+      aeAssistedActivations: number;
       ratio: string;
       avgDaysToActivate: string;
     }>;
@@ -51,6 +55,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedAgentId, setSelectedAgentId] = useState<string>('all');
   const [openCycleIds, setOpenCycleIds] = useState<Set<string>>(new Set());
   const [synergyIndex, setSynergyIndex] = useState(0);
+  const [synergyMode, setSynergyMode] = useState<'transfer' | 'activation'>('transfer');
   const [isCompareMinimized, setIsCompareMinimized] = useState(false);
   const [hoveredPoint, setHoveredPoint] = useState<any>(null);
 
@@ -132,6 +137,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       agentWins.forEach(a => { if (a.aeName && a.aeName !== agent.name && ACCOUNT_EXECUTIVES.includes(a.aeName)) assistsMap[a.aeName] = (assistsMap[a.aeName] || 0) + 1; });
       return { agentName: agent.name, assists: Object.entries(assistsMap).sort((a, b) => b[1] - a[1]) };
     }).filter(s => s.assists.length > 0);
+  }, [appointments, allUsers]);
+
+  const activationSynergy = useMemo(() => {
+    return allUsers.filter(u => u.role !== 'admin').map(agent => {
+      const activationsByMe = appointments.filter(a => a.activatedByUserId === agent.id);
+      const sourcesMap: Record<string, number> = {};
+      activationsByMe.forEach(a => {
+        const onboarder = allUsers.find(u => u.id === a.userId);
+        const name = onboarder?.name || 'Unknown';
+        sourcesMap[name] = (sourcesMap[name] || 0) + 1;
+      });
+      return { agentName: agent.name, sources: Object.entries(sourcesMap).sort((a, b) => b[1] - a[1]) };
+    }).filter(s => s.sources.length > 0);
   }, [appointments, allUsers]);
 
   const historyCycles = useMemo(() => {
@@ -244,24 +262,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6 w-full xl:w-auto">
-          <div className="flex items-center gap-1 md:gap-2 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 scale-90 md:scale-100">
-            <div className="flex flex-col px-2 md:px-3 border-r border-slate-200 dark:border-slate-700">
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Std</span>
-              <input type="number" value={commissionRate} onChange={e => onUpdateMasterCommissions(parseInt(e.target.value), selfCommissionRate, referralRate, activationRate)} className="w-10 md:w-12 bg-transparent text-xs font-black text-indigo-600 focus:outline-none" />
-            </div>
-            <div className="flex flex-col px-2 md:px-3 border-r border-slate-200 dark:border-slate-700">
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Self</span>
-              <input type="number" value={selfCommissionRate} onChange={e => onUpdateMasterCommissions(commissionRate, parseInt(e.target.value), referralRate, activationRate)} className="w-10 md:w-12 bg-transparent text-xs font-black text-emerald-600 focus:outline-none" />
-            </div>
-            <div className="flex flex-col px-2 md:px-3 border-r border-slate-200 dark:border-slate-700">
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Ref</span>
-              <input type="number" value={referralRate} onChange={e => onUpdateMasterCommissions(commissionRate, selfCommissionRate, parseInt(e.target.value), activationRate)} className="w-10 md:w-12 bg-transparent text-xs font-black text-rose-600 focus:outline-none" />
-            </div>
-            <div className="flex flex-col px-2 md:px-3">
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Act</span>
-              <input type="number" value={activationRate} onChange={e => onUpdateMasterCommissions(commissionRate, selfCommissionRate, referralRate, parseInt(e.target.value))} className="w-10 md:w-12 bg-transparent text-xs font-black text-amber-600 focus:outline-none" />
-            </div>
-          </div>
           <button onClick={onLogOnboard} className="flex items-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg transition-all font-black text-[9px] md:text-[10px] uppercase tracking-widest active:scale-95 whitespace-nowrap"><IconSparkles className="w-4 h-4" /> Log Onboard</button>
         </div>
       </div>
@@ -291,7 +291,117 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="lg:col-span-1 bg-white dark:bg-slate-900 p-10 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center animate-in zoom-in-95 duration-500"><h3 className="text-xs font-black text-slate-900 dark:text-white mb-10 uppercase tracking-widest flex items-center gap-3"><IconChartPie className="w-5 h-5 text-indigo-500" /> Agent Market Share</h3><div className="relative w-56 h-56 mb-10"><svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full drop-shadow-xl transition-all duration-700"><circle cx="50" cy="50" r={35} fill="transparent" stroke="#f1f5f9" strokeWidth="12" className="dark:stroke-slate-800" />{marketShareData.reduce((acc, share, i) => { const total = marketShareData.reduce((s, x) => s + x.value, 0) || 1; const circum = 2 * Math.PI * 35; const length = (share.value / total) * circum; const offset = acc.offset; acc.offset -= length; acc.elements.push(<circle key={i} cx="50" cy="50" r={35} fill="transparent" stroke={share.color} strokeWidth="14" strokeDasharray={`${length} ${circum}`} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-1000" />); return acc; }, { offset: 0, elements: [] as any }).elements}</svg><div className="absolute inset-0 flex flex-col items-center justify-center"><span className="text-3xl font-black text-slate-900 dark:text-white">{marketShareData.length}</span><span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Active Agents</span></div></div><div className="w-full space-y-4">{marketShareData.slice(0, 3).map(share => (<div key={share.name} className="flex justify-between items-center text-xs"><div className="flex items-center gap-3"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: share.color }}></div><span className="font-bold text-slate-700 dark:text-slate-300">{share.name}</span></div><span className="font-black text-slate-900 dark:text-white">{share.share}%</span></div>))}</div></div>
               <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">{agentPerformers.map(agent => (<div key={agent.id} className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden hover:shadow-xl transition-all"><div className="flex justify-between items-start mb-6"><div className="flex items-center gap-4"><div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center overflow-hidden border border-indigo-100 dark:border-indigo-800 shadow-sm">{agent.avatarId && agent.avatarId !== 'initial' ? <div className="w-8 h-8">{getAvatarIcon(agent.avatarId)}</div> : <span className="text-xl font-black text-indigo-600">{agent.name.charAt(0)}</span>}</div><div><h4 className="font-black text-slate-900 dark:text-white uppercase tracking-tighter">{agent.name}</h4><p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Production Share</p></div></div><div className="text-right"><span className="text-2xl font-black text-emerald-600 tabular-nums">{formatCurrency(agent.totalEarned)}</span><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Payout</p></div></div><div className="space-y-4 mb-6"><div className="space-y-1.5"><div className="flex justify-between text-[9px] font-black uppercase tracking-widest"><span>Self-Onboard mastery</span><span className="text-emerald-500 font-black">{agent.selfCount} Wins</span></div><div className="h-2 w-full bg-slate-50 dark:bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${agent.winCount > 0 ? (agent.selfCount / agent.winCount) * 100 : 0}%` }}></div></div></div><div className="space-y-1.5"><div className="flex justify-between text-[9px] font-black uppercase tracking-widest"><span>velocity</span><span className="text-indigo-500 font-black">{agent.velocity === 'N/A' ? '0.0' : agent.velocity} Days</span></div><div className="h-2 w-full bg-slate-50 dark:bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${Math.min(100, (parseFloat(agent.velocity === 'N/A' ? '0' : agent.velocity) / 10) * 100)}%` }}></div></div></div></div><div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50 dark:border-slate-800"><div className="text-center p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50"><p className="text-[9px] font-black text-slate-400 uppercase mb-1">Onboard Rate</p><p className="text-lg font-black text-slate-900 dark:text-white">{agent.onboardRate}%</p></div><div className="text-center p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50"><p className="text-[9px] font-black text-slate-400 uppercase mb-1">Cancel Rate</p><p className="text-lg font-black text-rose-500">{agent.cancelRate}%</p></div></div></div>))}</div>
             </div>
-            {synergyMatrix.length > 0 && (<div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12"><div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col"><div className="px-10 py-6 border-b dark:border-slate-800 flex justify-between items-center bg-slate-50/30"><h3 className="font-black text-slate-900 dark:text-white uppercase tracking-tighter text-sm flex items-center gap-4"><IconTimer className="w-6 h-6 text-amber-500" /> Time to Activation (Avg)</h3><IconTrendingUp className="w-4 h-4 text-emerald-500" /></div><div className="p-10 flex-1 flex flex-col justify-center">{allUsers.filter(u => u.role !== 'agent').slice(0, 4).map(u => { const stats = performanceStats?.agentStats[u.id]; return (<div key={u.id} className="mb-6"><div className="flex justify-between items-end mb-2"><span className="text-xs font-black text-slate-700 dark:text-slate-300">{u.name}</span><span className="text-xs font-black text-indigo-600 dark:text-indigo-400">{stats?.avgDaysToActivate || '0.0'} Days</span></div><div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-amber-500 transition-all duration-1000" style={{ width: `${Math.min(100, (parseFloat(stats?.avgDaysToActivate || '0') / 14) * 100)}%` }}></div></div></div>); })}</div></div><div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden"><div className="px-10 py-6 border-b dark:border-slate-800 flex justify-between items-center bg-slate-50/30"><h3 className="font-black text-slate-900 dark:text-white uppercase tracking-tighter text-sm flex items-center gap-4"><IconTransfer className="w-6 h-6 text-orange-500" /> Executive Synergy Matrix</h3><div className="flex items-center gap-2">{synergyMatrix.map((_, i) => (<button key={i} onClick={() => setSynergyIndex(i)} className={`w-2 h-2 rounded-full transition-all ${synergyIndex === i ? 'bg-indigo-600 w-4' : 'bg-slate-200 dark:bg-slate-700'}`} />))}</div></div><div className="p-10 relative flex items-center justify-center min-h-[300px]"><button onClick={() => setSynergyIndex(v => (v > 0 ? v - 1 : synergyMatrix.length - 1))} className="absolute left-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"><IconChevronLeft className="w-8 h-8" /></button><div className="w-full max-w-lg text-center animate-in slide-in-from-right-8 duration-500" key={synergyIndex}><div className="flex flex-col items-center mb-8"><div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 flex items-center justify-center text-2xl font-black shadow-sm mb-3">{synergyMatrix[synergyIndex].agentName.charAt(0)}</div><h4 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">{synergyMatrix[synergyIndex].agentName}</h4><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Source Performance Flow</p></div><div className="space-y-6">{synergyMatrix[synergyIndex].assists.map(([ae, count]: [string, number]) => { const totalAssisted = synergyMatrix[synergyIndex].assists.reduce((s, x) => s + x[1], 0); return (<div key={ae} className="space-y-2"><div className="flex justify-between items-end"><span className="text-xs font-black text-slate-700 dark:text-slate-300">Closed by {ae}</span><span className="text-xs font-black text-indigo-600 dark:text-indigo-400">{count} Transfers</span></div><div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner"><div className={`h-full bg-indigo-500 transition-all duration-1000`} style={{ width: `${(count / totalAssisted) * 100}%` }}></div></div></div>); })}</div></div><button onClick={() => setSynergyIndex(v => (v < synergyMatrix.length - 1 ? v + 1 : 0))} className="absolute right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"><IconChevronRight className="w-8 h-8" /></button></div></div></div>)}
+            {synergyMatrix.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+                <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
+                  <div className="px-10 py-6 border-b dark:border-slate-800 flex justify-between items-center bg-slate-50/30">
+                    <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-tighter text-sm flex items-center gap-4"><IconTimer className="w-6 h-6 text-amber-500" /> Time to Activation (Avg)</h3>
+                    <IconTrendingUp className="w-4 h-4 text-emerald-500" />
+                  </div>
+                  <div className="p-10 flex-1 flex flex-col justify-center">
+                    {allUsers.filter(u => u.role === 'agent').slice(0, 4).map(u => {
+                      const stats = performanceStats?.agentStats[u.id];
+                      return (
+                        <div key={u.id} className="mb-6">
+                          <div className="flex justify-between items-end mb-2">
+                            <span className="text-xs font-black text-slate-700 dark:text-slate-300">{u.name}</span>
+                            <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">{stats?.avgDaysToActivate || '0.0'} Days</span>
+                          </div>
+                          <div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
+                            <div className="h-full bg-amber-500 transition-all duration-1000" style={{ width: `${Math.min(100, (parseFloat(stats?.avgDaysToActivate || '0') / 14) * 100)}%` }}></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                  <div className="px-10 py-6 border-b dark:border-slate-800 flex justify-between items-center bg-slate-50/30">
+                    <div className="flex gap-4">
+                      <button onClick={() => setSynergyMode('transfer')} className={`font-black uppercase tracking-tighter text-sm flex items-center gap-2 transition-all ${synergyMode === 'transfer' ? 'text-indigo-600' : 'text-slate-400'}`}>
+                        <IconTransfer className="w-5 h-5" /> AE Synergy
+                      </button>
+                      <button onClick={() => setSynergyMode('activation')} className={`font-black uppercase tracking-tighter text-sm flex items-center gap-2 transition-all ${synergyMode === 'activation' ? 'text-amber-500' : 'text-slate-400'}`}>
+                        <IconZap className="w-5 h-5" /> Activation Synergy
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {(synergyMode === 'transfer' ? synergyMatrix : activationSynergy).map((_, i) => (
+                        <button key={i} onClick={() => setSynergyIndex(i)} className={`w-2 h-2 rounded-full transition-all ${synergyIndex === i ? 'bg-indigo-600 w-4' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="p-10 relative flex items-center justify-center min-h-[300px]">
+                    <button onClick={() => setSynergyIndex(v => (v > 0 ? v - 1 : (synergyMode === 'transfer' ? synergyMatrix : activationSynergy).length - 1))} className="absolute left-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
+                      <IconChevronLeft className="w-8 h-8" />
+                    </button>
+                    <div className="w-full max-w-lg text-center animate-in slide-in-from-right-8 duration-500" key={`${synergyMode}-${synergyIndex}`}>
+                      {synergyMode === 'transfer' ? (
+                        synergyMatrix[synergyIndex] && (
+                          <>
+                            <div className="flex flex-col items-center mb-8">
+                              <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 flex items-center justify-center text-2xl font-black shadow-sm mb-3">
+                                {synergyMatrix[synergyIndex].agentName.charAt(0)}
+                              </div>
+                              <h4 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">{synergyMatrix[synergyIndex].agentName}</h4>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">AE Transfer Source Flow</p>
+                            </div>
+                            <div className="space-y-6">
+                              {synergyMatrix[synergyIndex].assists.map(([ae, count]: [string, number]) => {
+                                const totalAssisted = synergyMatrix[synergyIndex].assists.reduce((s, x) => s + x[1], 0);
+                                return (
+                                  <div key={ae} className="space-y-2">
+                                    <div className="flex justify-between items-end">
+                                      <span className="text-xs font-black text-slate-700 dark:text-slate-300">Closed by {ae}</span>
+                                      <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">{count} Transfers</span>
+                                    </div>
+                                    <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
+                                      <div className={`h-full bg-indigo-500 transition-all duration-1000`} style={{ width: `${(count / totalAssisted) * 100}%` }}></div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )
+                      ) : (
+                        activationSynergy[synergyIndex] && (
+                          <>
+                            <div className="flex flex-col items-center mb-8">
+                              <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-900/40 text-amber-600 flex items-center justify-center text-2xl font-black shadow-sm mb-3">
+                                {activationSynergy[synergyIndex].agentName.charAt(0)}
+                              </div>
+                              <h4 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">{activationSynergy[synergyIndex].agentName}</h4>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Activating Partners for Other Agents</p>
+                            </div>
+                            <div className="space-y-6">
+                              {activationSynergy[synergyIndex].sources.map(([onboarder, count]: [string, number]) => {
+                                const total = activationSynergy[synergyIndex].sources.reduce((s, x) => s + x[1], 0);
+                                return (
+                                  <div key={onboarder} className="space-y-2">
+                                    <div className="flex justify-between items-end">
+                                      <span className="text-xs font-black text-slate-700 dark:text-slate-300">Assisting {onboarder}</span>
+                                      <span className="text-xs font-black text-amber-600 dark:text-amber-500">{count} Activations</span>
+                                    </div>
+                                    <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
+                                      <div className={`h-full bg-amber-500 transition-all duration-1000`} style={{ width: `${(count / total) * 100}%` }}></div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )
+                      )}
+                    </div>
+                    <button onClick={() => setSynergyIndex(v => (v < (synergyMode === 'transfer' ? synergyMatrix : activationSynergy).length - 1 ? v + 1 : 0))} className="absolute right-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
+                      <IconChevronRight className="w-8 h-8" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden mb-12"><div className="px-10 py-8 border-b dark:border-slate-800 flex justify-between items-center bg-slate-50/30"><h3 className="font-black text-slate-900 dark:text-white uppercase tracking-tighter text-sm flex items-center gap-4"><IconCycle className="w-6 h-6 text-indigo-500" /> Team Payout History Ledger</h3><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Audited cycle archives</span></div><div className="p-10 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start" ref={historyListRef}>{historyCycles.map(cycle => { const cycleOnboarded = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED && new Date(a.onboardedAt || a.scheduledAt).getTime() >= new Date(cycle.startDate).getTime() && new Date(a.onboardedAt || a.scheduledAt).getTime() <= new Date(cycle.endDate).setHours(23, 59, 59, 999)); const total = cycleOnboarded.reduce((s, a) => s + (a.earnedAmount || 0) + ((a.referralCount || 0) * referralRate), 0); const isExpanded = openCycleIds.has(cycle.id); const isLive = new Date().getTime() <= new Date(cycle.endDate).setHours(23, 59, 59, 999); return (<div key={cycle.id} className="bg-slate-50 dark:bg-slate-800/50 rounded-[3rem] border border-slate-100 dark:border-slate-700 flex flex-col transition-all duration-500 hover:border-indigo-200 hover:shadow-xl"><button onClick={(e) => toggleCycleDetails(cycle.id, e.currentTarget)} className="w-full p-8 flex items-center justify-between group"><div className="flex items-center gap-6"><div className={`w-16 h-16 rounded-[2rem] flex flex-col items-center justify-center transition-all duration-500 shadow-sm ${isExpanded ? 'bg-indigo-600 text-white rotate-6' : 'bg-white dark:bg-slate-900 text-slate-600'}`}><span className="text-2xl font-black">{cycleOnboarded.length}</span><span className="text-[8px] font-bold uppercase">Wins</span></div><div className="text-left"><p className="text-sm font-black text-slate-900 dark:text-white">{formatDate(cycle.startDate)} — {formatDate(cycle.endDate)}</p><div className="flex items-center gap-3 mt-1"><p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">Total: {formatCurrency(total)}</p>{isLive && <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-600 text-[8px] font-black animate-pulse">LIVE ACTIVE</span>}</div></div></div><div className={`p-3 rounded-2xl bg-white dark:bg-slate-900 text-slate-400 transition-all duration-500 ${isExpanded ? 'rotate-180 text-indigo-600 scale-110' : 'group-hover:scale-110'}`}><IconChevronDown className="w-6 h-6" /></div></button>{isExpanded && (<div className="px-8 pb-8 animate-in slide-in-from-top-6 duration-700 overflow-hidden"><div className="bg-white dark:bg-slate-950 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-inner overflow-hidden mb-6"><div className="max-h-80 overflow-y-auto no-scrollbar divide-y dark:divide-slate-800">{cycleOnboarded.length > 0 ? cycleOnboarded.map(a => { const agent = allUsers.find(u => u.id === a.userId); const isTransferred = a.aeName && ACCOUNT_EXECUTIVES.includes(a.aeName); return (<button key={a.id} onClick={() => onViewAppt(a)} className="w-full text-left p-5 flex justify-between items-center text-xs group/item hover:bg-slate-50 transition-colors"><div className="flex items-center gap-4"><div className={`p-2 rounded-xl ${isTransferred ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>{isTransferred ? <IconTransfer className="w-4 h-4" /> : <IconCheck className="w-4 h-4" />}</div><div><p className="font-black text-slate-900 dark:text-white">{agent?.name} <span className="text-slate-400 font-medium">onboarded</span> {a.name}</p><div className="flex items-center gap-2 mt-1">{isTransferred && <span className="text-[8px] font-black text-indigo-500 uppercase flex items-center gap-1"><IconBriefcase className="w-2.5 h-2.5" /> Assisted by {a.aeName}</span>}{a.referralCount ? <span className="text-[8px] font-black text-rose-500 uppercase">+{formatCurrency(a.referralCount * referralRate)} Ref</span> : null}</div></div></div><span className="font-black text-emerald-600 tabular-nums">+{formatCurrency((a.earnedAmount || 0) + (a.referralCount || 0) * referralRate)}</span></button>); }) : <div className="p-12 text-center text-slate-400 italic text-sm">No onboards recorded.</div>}</div></div><button onClick={() => exportFilteredLedger()} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all active:scale-95"><IconDownload className="w-5 h-5" /> Quick Ledger Export</button></div>)}</div>); })}</div></div>
           </div>
         )}
@@ -319,12 +429,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             commissionRate={commissionRate}
             selfCommissionRate={selfCommissionRate}
             referralRate={referralRate}
-            onUpdateMasterCommissions={(std, self, ref, _syncRetroactive) => onUpdateMasterCommissions(std, self, ref, activationRate)}
+            onUpdateMasterCommissions={(std, self, ref, act) => onUpdateMasterCommissions(std, self, ref, act)}
             onImportReferrals={onImportReferrals}
             appointments={appointments}
             allUsers={allUsers}
             onManualReferral={onManualReferral}
             onDeleteReferral={onDeleteReferral}
+            allIncentives={allIncentives}
           />
         )}
         {activeTab === 'auditlog' && (<div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm"><table className="w-full text-left"><thead className="bg-slate-50 dark:bg-slate-900/50"><tr><th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400">Agent</th><th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400">Action</th><th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400">Details</th><th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400">Date</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">{activityLogs.slice().reverse().map(log => (<tr key={log.id} className="hover:bg-slate-50 transition-colors"><td className="px-8 py-5 text-sm font-bold text-slate-900 dark:text-white">{log.userName}</td><td className="px-8 py-5"><span className="text-[10px] font-black px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 uppercase">{log.action}</span></td><td className="px-8 py-5 text-xs text-slate-500 font-medium">{log.details}</td><td className="px-8 py-5 text-[10px] font-bold text-slate-400 uppercase">{formatDate(log.timestamp)}</td></tr>))}</tbody></table></div>)}

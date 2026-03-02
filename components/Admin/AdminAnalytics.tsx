@@ -17,9 +17,10 @@ interface AdminAnalyticsProps {
    selfCommissionRate: number;
    onManualReferral?: (clientId: string, count: number) => void;
    onDeleteReferral?: (clientId: string, entryId: string) => void;
+   incentives?: any[];
 }
 
-export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, appointments, payCycles, users, referralRate, commissionRate, selfCommissionRate, onManualReferral, onDeleteReferral }) => {
+export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, appointments, payCycles, users, referralRate, commissionRate, selfCommissionRate, onManualReferral, onDeleteReferral, incentives = [] }) => {
    const [selectedCycleId, setSelectedCycleId] = useState<string>('active');
    const [selectedAgentId, setSelectedAgentId] = useState<string>('all');
 
@@ -69,6 +70,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
       const onboardedCount = onboardedAppts.length;
       const pending = filteredAppointments.filter(a => a.stage === AppointmentStage.PENDING || a.stage === AppointmentStage.RESCHEDULED).length;
       const failed = filteredAppointments.filter(a => a.stage === AppointmentStage.NO_SHOW || a.stage === AppointmentStage.DECLINED).length;
+      const activations = filteredAppointments.filter(a => !!a.activatedAt).length;
 
       let selfRev = 0;
       let transferRev = 0;
@@ -105,8 +107,24 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
          }
       });
 
-      const referralRevenue = onboardedAppts.reduce((sum, a) => sum + (a.referralCount || 0) * referralRate, 0);
-      const referralCount = onboardedAppts.reduce((sum, a) => sum + (a.referralCount || 0), 0);
+      const filteredIncentives = (incentives || []).filter(i => {
+         if (selectedCycleId === 'lifetime') return true;
+         if (selectedCycleId === 'active') {
+            const active = payCycles.find(c => {
+               const now = Date.now();
+               const s = new Date(c.startDate).getTime();
+               const e = new Date(c.endDate).setHours(23, 59, 59, 999);
+               return now >= s && now <= e;
+            });
+            if (!active) return false;
+            return i.applied_cycle_id === active.id;
+         }
+         return i.applied_cycle_id === selectedCycleId;
+      });
+      const referralRevenue = filteredIncentives.filter(i => (i.label || '').toLowerCase().includes('activation')).reduce((s, i) => s + (i.amount_cents || 0), 0);
+      const referralCount = activations;
+      const selfActivated = filteredAppointments.filter(a => !!a.activatedAt && a.originalOnboardType === 'self').length;
+      const aeActivated = filteredAppointments.filter(a => !!a.activatedAt && a.originalOnboardType !== 'self').length;
 
       return {
          total: filteredAppointments.length,
@@ -121,9 +139,11 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
          transferRevenue: transferRev,
          referralRevenue,
          referralCount,
+         selfActivated,
+         aeActivated,
          synergy
       };
-   }, [filteredAppointments, users, referralRate, commissionRate, selfCommissionRate]);
+   }, [filteredAppointments, users, referralRate, commissionRate, selfCommissionRate, incentives, payCycles, selectedCycleId]);
 
    const radius = 40;
    const circumference = 2 * Math.PI * radius;
@@ -213,7 +233,12 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
                value: filteredAppointments.filter(a => a.userId === m.id && (!a.aeName || a.aeName === m.name) && a.stage === AppointmentStage.ONBOARDED).reduce((s, a) => s + (a.earnedAmount || selfCommissionRate), 0),
                color: '#10b981',
                label: `${m.name} (Self)`
-            }))
+            })),
+            {
+               value: scopedData.referralRevenue,
+               color: '#f43f5e',
+               label: 'Activations'
+            }
          ]
       }
    ];
@@ -273,11 +298,15 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
             </div>
             <div className="bg-gradient-to-br from-rose-500 to-orange-600 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden group">
                <div className="relative z-10">
-                  <div className="flex items-center gap-2 mb-2 text-rose-100 font-black uppercase tracking-widest text-[10px]"><IconUsers className="w-4 h-4" /> Referral Engine</div>
+                  <div className="flex items-center gap-2 mb-2 text-rose-100 font-black uppercase tracking-widest text-[10px]"><IconZap className="w-4 h-4" /> Partner Activations</div>
                   <div className="text-5xl font-black mb-4">{formatCurrency(scopedData.referralRevenue)}</div>
                   <div className="flex items-center justify-between text-xs font-bold bg-white/20 p-3 rounded-2xl backdrop-blur-md">
-                     <span>{scopedData.referralCount} Leads Delivered</span>
-                     <span className="text-rose-100">+{formatCurrency(scopedData.referralRevenue)} Distributed</span>
+                     <span>{scopedData.referralCount} Partners</span>
+                     <div className="flex gap-3 text-[10px] text-white font-black uppercase">
+                        <span>Self: {scopedData.selfActivated}</span>
+                        <span className="opacity-50">|</span>
+                        <span>AE: {scopedData.aeActivated}</span>
+                     </div>
                   </div>
                </div>
                <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000"></div>

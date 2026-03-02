@@ -244,10 +244,32 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
               <IconTransfer className="w-4 h-4" /> Transfer
             </button>
           </div>
+        ) : appointment.stage === AppointmentStage.ONBOARDED ? (
+          <div className="flex flex-col gap-2 w-full pt-1">
+            {!appointment.activatedAt && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ACTIVATED); }}
+                className="w-full py-2.5 flex items-center justify-center gap-2 rounded-xl text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 border border-amber-200/50 dark:border-amber-800/50"
+              >
+                <IconSparkles className="w-3.5 h-3.5" /> Log Partner Activation
+              </button>
+            )}
+            <div className="flex justify-between items-center text-[10px] text-slate-400">
+              <div className="flex items-center gap-1.5">
+                {appointment.activatedAt ? (
+                  <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold uppercase">
+                    <IconCheck className="w-3 h-3" /> Activated
+                  </span>
+                ) : (
+                  <span className="uppercase font-medium">Awaiting Activation</span>
+                )}
+              </div>
+              <span className="font-bold text-emerald-500">+{formatCurrency(totalPayout)}</span>
+            </div>
+          </div>
         ) : (
           <div className="w-full flex justify-center items-center gap-2 text-[10px] text-slate-400 py-2">
             <span>{STAGE_LABELS[appointment.stage]}</span>
-            {appointment.stage === AppointmentStage.ONBOARDED && <span className="font-bold text-emerald-500">+{formatCurrency(totalPayout)}</span>}
           </div>
         )}
       </div>

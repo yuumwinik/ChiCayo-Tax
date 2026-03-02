@@ -9,7 +9,7 @@ export enum AppointmentStage {
   ACTIVATED = 'ACTIVATED',
 }
 
-export type View = 'dashboard' | 'calendar' | 'onboarded' | 'earnings-full' | 'admin-dashboard' | 'profile' | 'user-analytics' | 'education';
+export type View = 'dashboard' | 'calendar' | 'onboarded' | 'earnings-full' | 'admin-dashboard' | 'profile' | 'user-analytics' | 'education' | 'reminders';
 export type UserRole = 'agent' | 'admin';
 export type AdminView = 'overview' | 'deepdive' | 'cycles' | 'auditlog' | 'referral-wins';
 export type AvatarId = 'initial' | 'robot' | 'alien' | 'ghost' | 'fire' | 'zap' | 'crown' | 'star' | 'smile';
@@ -63,6 +63,17 @@ export interface ReferralHistoryEntry {
   incentiveId: string;
 }
 
+export interface Reminder {
+  id: string;
+  userId: string;
+  name: string;
+  phone: string;
+  email: string;
+  callBackAt: string; // ISO string
+  notes?: string;
+  createdAt: string;
+}
+
 export interface Appointment {
   id: string;
   userId: string;
@@ -82,6 +93,7 @@ export interface Appointment {
   nurtureDate?: string;
   onboardedAt?: string;
   activatedAt?: string;
+  activatedByUserId?: string;
   originalUserId?: string;
   originalOnboardType?: 'self' | 'transfer';
   originalAeName?: string;

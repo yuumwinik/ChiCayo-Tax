@@ -2,8 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { IconBot, IconSend, IconX, IconCopy, IconCheck, IconExternalLink, IconArrowRight, IconSparkles } from './Icons';
 import { Appointment, EarningWindow, PayCycle, User, View, AppointmentStage } from '../types';
-import { Groq } from "groq-sdk";
-import { formatCurrency } from '../utils/dateUtils';
+import { formatCurrency, formatDate } from '../utils/dateUtils';
 import { calculateSuccessProbability, generateCoachingInsights } from '../utils/analyticsUtils';
 import { TRAINING_CONTENT } from '../utils/trainingData';
 
@@ -27,7 +26,47 @@ interface Message {
   text: string;
 }
 
-const RichMessageRenderer = ({ text, onOpenAppointment, onNavigate }: { text: string, onOpenAppointment?: (id: string) => void, onNavigate?: (view: View) => void }) => {
+const processBold = (text: string) => {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="font-extrabold text-slate-900 dark:text-white drop-shadow-sm">{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+};
+
+const MarkdownText = ({ content }: { content: string }) => {
+  const lines = content.split('\n');
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, i) => {
+        // Headers
+        if (line.trim().startsWith('### ')) {
+          return <h3 key={i} className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.15em] mt-6 mb-3 flex items-center gap-2">
+            <div className="w-1 h-3 bg-indigo-500 rounded-full" />
+            {line.replace('### ', '')}
+          </h3>;
+        }
+        // Bullets
+        if (line.trim().startsWith('• ') || line.trim().startsWith('- ')) {
+          const clean = line.trim().replace(/^[•-]\s+/, '');
+          return (
+            <div key={i} className="flex gap-3 items-start ml-2 py-0.5">
+              <span className="text-indigo-400 font-black mt-0.5">•</span>
+              <span className="text-sm font-medium leading-relaxed">{processBold(clean)}</span>
+            </div>
+          );
+        }
+        // General line
+        if (!line.trim()) return <div key={i} className="h-2" />;
+        return <div key={i} className="text-sm text-slate-600 dark:text-slate-300 font-medium leading-relaxed">{processBold(line)}</div>;
+      })}
+    </div>
+  );
+};
+
+export const RichMessageRenderer = ({ text, onOpenAppointment, onNavigate }: { text: string, onOpenAppointment?: (id: string) => void, onNavigate?: (view: View) => void }) => {
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
   const handleCopy = (txt: string) => {
@@ -40,51 +79,49 @@ const RichMessageRenderer = ({ text, onOpenAppointment, onNavigate }: { text: st
 
   return (
     <div className="space-y-2">
-      <span className="whitespace-pre-wrap leading-relaxed">
-        {parts.map((part, i) => {
-          if (part.startsWith('[[COPY_PHONE:')) {
-            const content = part.replace('[[COPY_PHONE:', '').replace(']]', '');
-            const isCopied = copiedText === content;
-            return (
-              <button key={i} onClick={() => handleCopy(content)} className="inline-flex items-center gap-1.5 mx-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs font-bold hover:bg-indigo-100 transition-colors border border-indigo-200 dark:border-indigo-800">
-                {isCopied ? <IconCheck className="w-3 h-3" /> : <IconCopy className="w-3 h-3" />}
-                {content}
-              </button>
-            );
-          } else if (part.startsWith('[[OPEN_APPT:')) {
-            const raw = part.replace('[[OPEN_APPT:', '').replace(']]', '');
-            const [id, name] = raw.split(':', 2);
-            return (
-              <button key={i} onClick={() => onOpenAppointment && onOpenAppointment(id)} className="inline-flex items-center gap-1.5 mx-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-100 transition-colors border border-emerald-200 dark:border-emerald-800">
-                <IconExternalLink className="w-3 h-3" /> View {name || 'Details'}
-              </button>
-            );
-          } else if (part.startsWith('[[NAV:')) {
-            const view = part.replace('[[NAV:', '').replace(']]', '') as View;
-            let label = 'View Page';
-            if (view === 'earnings-full') label = 'View Full Wallet';
-            else if (view === 'user-analytics') label = 'View My Stats';
-            else if (view === 'admin-dashboard') label = 'Team Dashboard';
-            else if (view === 'onboarded') label = 'Trophy Case';
-            else if (view === 'calendar') label = 'Calendar';
-            return (
-              <button key={i} onClick={() => onNavigate && onNavigate(view)} className="inline-flex items-center gap-2 my-2 mr-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all shadow-lg shadow-indigo-200 dark:shadow-none">
-                {label} <IconArrowRight className="w-3 h-3" />
-              </button>
-            );
-          } else if (part.startsWith('[[STAT:')) {
-            const raw = part.replace('[[STAT:', '').replace(']]', '');
-            const [label, value] = raw.split(':', 2);
-            return (
-              <span key={i} className="inline-flex flex-col items-start mx-1 my-1 align-middle bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 shadow-sm min-w-[100px]">
-                <span className="text-[9px] uppercase tracking-widest text-slate-400 font-black mb-0.5">{label}</span>
-                <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">{value}</span>
-              </span>
-            );
-          }
-          return part;
-        })}
-      </span>
+      {parts.map((part, i) => {
+        if (part.startsWith('[[COPY_PHONE:')) {
+          const content = part.replace('[[COPY_PHONE:', '').replace(']]', '');
+          const isCopied = copiedText === content;
+          return (
+            <button key={i} onClick={() => handleCopy(content)} className="inline-flex items-center gap-1.5 mx-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all border border-indigo-200 dark:border-indigo-800 shadow-sm">
+              {isCopied ? <IconCheck className="w-3 h-3" /> : <IconCopy className="w-3 h-3" />}
+              {content}
+            </button>
+          );
+        } else if (part.startsWith('[[OPEN_APPT:')) {
+          const raw = part.replace('[[OPEN_APPT:', '').replace(']]', '');
+          const [id, name] = raw.split(':', 2);
+          return (
+            <button key={i} onClick={() => onOpenAppointment && onOpenAppointment(id)} className="inline-flex items-center gap-1.5 mx-1 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-200 dark:border-emerald-800 shadow-sm">
+              <IconExternalLink className="w-3 h-3" /> View {name || 'Details'}
+            </button>
+          );
+        } else if (part.startsWith('[[NAV:')) {
+          const view = part.replace('[[NAV:', '').replace(']]', '') as View;
+          let label = 'View Page';
+          if (view === 'earnings-full') label = 'View Full Wallet';
+          else if (view === 'user-analytics') label = 'View My Stats';
+          else if (view === 'admin-dashboard') label = 'Team Dashboard';
+          else if (view === 'onboarded') label = 'Trophy Case';
+          else if (view === 'calendar') label = 'Calendar';
+          return (
+            <button key={i} onClick={() => onNavigate && onNavigate(view)} className="flex items-center gap-2 my-4 px-6 py-3.5 rounded-2xl bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-indigo-700 hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-indigo-200 dark:shadow-none items-center justify-center w-full">
+              {label} <IconArrowRight className="w-3 h-3" />
+            </button>
+          );
+        } else if (part.startsWith('[[STAT:')) {
+          const raw = part.replace('[[STAT:', '').replace(']]', '');
+          const [label, value] = raw.split(':', 2);
+          return (
+            <span key={i} className="inline-flex flex-col items-start mx-1 my-2 align-middle bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 py-3 shadow-md min-w-[120px] transition-transform hover:scale-105">
+              <span className="text-[8px] uppercase tracking-[0.2em] text-slate-400 font-black mb-1">{label}</span>
+              <span className="text-base font-black text-indigo-600 dark:text-indigo-400 tracking-tight">{value}</span>
+            </span>
+          );
+        }
+        return <MarkdownText key={i} content={part} />;
+      })}
     </div>
   );
 };
@@ -119,6 +156,39 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
   const prepareContextData = () => {
     const relevantAppointments = user.role === 'admin' ? allAppointments : allAppointments.filter(a => a.userId === user.id);
     const now = new Date();
+    const nowTimestamp = now.getTime();
+
+    // Separate Upcoming vs Past
+    const upcomingEvents = relevantAppointments
+      .filter(a => {
+        const date = new Date(a.scheduledAt).getTime();
+        return date > nowTimestamp && (a.stage === AppointmentStage.PENDING || a.stage === AppointmentStage.RESCHEDULED);
+      })
+      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+      .slice(0, 10)
+      .map(a => ({
+        id: a.id,
+        name: a.name,
+        time: a.scheduledAt,
+        stage: a.stage,
+        type: a.type || 'appointment'
+      }));
+
+    const recentPastEvents = relevantAppointments
+      .filter(a => {
+        const date = new Date(a.onboardedAt || a.scheduledAt).getTime();
+        return date <= nowTimestamp;
+      })
+      .sort((a, b) => new Date(b.onboardedAt || b.scheduledAt || b.createdAt).getTime() - new Date(a.onboardedAt || a.scheduledAt || a.createdAt).getTime())
+      .slice(0, 20)
+      .map(a => ({
+        id: a.id,
+        name: a.name,
+        time: a.onboardedAt || a.scheduledAt,
+        stage: a.stage,
+        ae: a.aeName,
+        amt: formatCurrency(a.earnedAmount || 0)
+      }));
 
     let currentCycleTotal = 0;
     let currentCycleWins = 0;
@@ -126,7 +196,7 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       const s = new Date(activeCycle.startDate).getTime();
       const e = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
       relevantAppointments.forEach(a => {
-        if (a.stage === AppointmentStage.ONBOARDED) {
+        if (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED) {
           const rawDate = a.onboardedAt || a.scheduledAt;
           if (!rawDate) return;
           const d = new Date(rawDate).getTime();
@@ -142,42 +212,7 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       });
     }
 
-    // Historical Cycle Summary (Last 12 Cycles)
-    const history = payCycles
-      .filter(c => new Date(c.endDate).getTime() < now.getTime())
-      .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime())
-      .slice(0, 12)
-      .map(c => {
-        const cycleAppts = relevantAppointments.filter(a => {
-          const rawDate = a.onboardedAt || a.scheduledAt;
-          if (!rawDate) return false;
-          const d = new Date(rawDate).getTime();
-          if (isNaN(d)) return false;
-          return d >= new Date(c.startDate).getTime() && d <= new Date(c.endDate).setHours(23, 59, 59, 999);
-        });
-        const cycleWins = cycleAppts.filter(a => a.stage === AppointmentStage.ONBOARDED);
-        const cycleRev = cycleWins.reduce((sum, a) => {
-          const agent = allUsers.find(u => u.id === a.userId);
-          const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
-          return sum + (a.earnedAmount || defaultRate) + (a.referralCount || 0) * referralCommissionRate;
-        }, 0);
-        return {
-          id: c.id,
-          label: `${new Date(c.startDate).toLocaleDateString()} - ${new Date(c.endDate).toLocaleDateString()}`,
-          wins: cycleWins.length,
-          revenue: formatCurrency(cycleRev),
-          revCents: cycleRev
-        };
-      });
-
-    const lifetimeOnboarded = relevantAppointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
-
-    const referralData = lifetimeOnboarded.filter(a => (a.referralCount || 0) > 0).map(p => ({
-      name: p.name,
-      count: p.referralCount,
-      last: p.lastReferralAt
-    })).sort((a, b) => (b.count || 0) - (a.count || 0));
-
+    const lifetimeOnboarded = relevantAppointments.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
     const lifetimeEarnings = lifetimeOnboarded.reduce((sum, a) => {
       const agent = allUsers.find(u => u.id === a.userId);
       const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
@@ -185,42 +220,148 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     }, 0) + lifetimeOnboarded.reduce((sum, a) => sum + (a.referralCount || 0) * referralCommissionRate, 0);
 
     const context = {
-      meta: {
-        currentUser: { id: user.id, name: user.name, role: user.role },
+      timeContext: {
         nowISO: now.toISOString(),
+        localTime: now.toLocaleString(),
         todayDate: now.toLocaleDateString('en-CA'),
-        activeRules: { standard: commissionRate, self: selfCommissionRate },
         activeCycle: activeCycle ? {
-          id: activeCycle.id,
-          start: activeCycle.startDate,
-          end: activeCycle.endDate,
-          currentTotalCents: currentCycleTotal,
-          currentTotalFormatted: formatCurrency(currentCycleTotal),
-          winCount: currentCycleWins
-        } : null,
+          label: `${formatDate(activeCycle.startDate)} - ${formatDate(activeCycle.endDate)}`,
+          daysRemaining: Math.ceil((new Date(activeCycle.endDate).getTime() - nowTimestamp) / (1000 * 60 * 60 * 24))
+        } : 'No Active Cycle'
+      },
+      performance: {
+        currentCycle: {
+          totalCents: currentCycleTotal,
+          formatted: formatCurrency(currentCycleTotal),
+          wins: currentCycleWins
+        },
         lifetime: {
           earnings: formatCurrency(lifetimeEarnings),
-          onboardedCount: lifetimeOnboarded.length,
-          totalApps: relevantAppointments.length,
-          topReferralPartners: referralData.slice(0, 3)
-        },
-        historicalPerformance: history
+          count: lifetimeOnboarded.length
+        }
       },
-      recentAppointments: relevantAppointments.sort((a, b) => {
-        const da = new Date(a.onboardedAt || a.scheduledAt || 0).getTime();
-        const db = new Date(b.onboardedAt || b.scheduledAt || 0).getTime();
-        return db - da;
-      }).slice(0, 50).map(a => ({
-        name: a.name, time: a.onboardedAt || a.scheduledAt, stage: a.stage, ae: a.aeName, amt: formatCurrency(a.earnedAmount || 0)
-      })),
-      teamMembers: user.role === 'admin' ? allUsers.filter(u => u.role !== 'admin').map(u => ({
+      upcomingEvents,
+      recentPastEvents,
+      teamSummary: user.role === 'admin' ? allUsers.filter(u => u.role !== 'admin').map(u => ({
         name: u.name,
-        role: u.role,
-        wins: allAppointments.filter(a => a.userId === u.id && a.stage === AppointmentStage.ONBOARDED).length
+        wins: allAppointments.filter(a => a.userId === u.id && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED)).length
       })) : []
     };
+
     return JSON.stringify(context);
   };
+
+  const handleLocalQuery = (text: string): string | null => {
+    const lower = text.toLowerCase();
+    const ctx = JSON.parse(prepareContextData());
+
+    // 1. Revenue & Earnings (High Precision)
+    if (lower.includes('earning') || lower.includes('revenue') || lower.includes('made') || lower.includes('money') || lower.includes('pay') || lower.includes('total')) {
+      const cycleRev = ctx.performance.currentCycle.formatted;
+      const cycleWins = ctx.performance.currentCycle.wins;
+      return `### Performance Metrics\nI've analyzed your cycle data. You've generated [[STAT:Cycle Revenue:${cycleRev}]] across [[STAT:Active Wins:${cycleWins} Wins]] this period.\n\nYour lifetime achievement is currently at [[STAT:Lifetime:${ctx.performance.lifetime.earnings}]]. Would you like to view the full ledger?\n\n[[NAV:earnings-full]]`;
+    }
+
+    // 2. Upcoming Schedule (Proactive)
+    if (lower.includes('upcoming') || lower.includes('scheduled') || lower.includes('next') || lower.includes('calendar') || lower.includes('future') || lower.includes('today') || lower.includes('tomorrow')) {
+      if (ctx.upcomingEvents.length === 0) return "### Schedule Empty\nYou don't have any upcoming leads scheduled right now. This is a great time to start a 'Referral Activation' call block! [[NAV:dashboard]]";
+      const list = ctx.upcomingEvents.slice(0, 5).map((a: any) => `• **${a.name}** at ${new Date(a.time).toLocaleString()}\n  - Stage: ${a.stage} \n  [[OPEN_APPT:${a.id}:${a.name}]]`).join('\n\n');
+      return `### Your Upcoming Schedule\nI found [[STAT:Next Up:${ctx.upcomingEvents.length} Leads]] on the horizon:\n\n${list}\n\n[[NAV:calendar]]`;
+    }
+
+    // 3. Past Events & History
+    if (lower.includes('past') || lower.includes('recent') || lower.includes('yesterday') || lower.includes('history') || lower.includes('last')) {
+      if (ctx.recentPastEvents.length === 0) return "No recent history logs found for this cycle.";
+      const list = ctx.recentPastEvents.slice(0, 5).map((a: any) => `• **${a.name}** - ${a.stage} (${a.amt})\n  [[OPEN_APPT:${a.id}:${a.name}]]`).join('\n\n');
+      return `### Recent Activity Log\nHere are your last [[STAT:Count:${ctx.recentPastEvents.length} Events]]:\n\n${list}`;
+    }
+
+    // 4. Brand & Process Knowledge (SBTPG / Investigation / Compensation)
+    if (lower.includes('investigation') || lower.includes('process') || lower.includes('step') || lower.includes('representation')) {
+      const p = (TRAINING_CONTENT as any).theProcess;
+      return `### The Resolution Process\nWe use a specialized 2-step approach to handle IRS debt:\n\n**1. ${p.step1.title}:** ${p.step1.actions[0]} and ${p.step1.actions[1]} (${p.step1.duration}).\n**2. ${p.step2.title}:** ${p.step2.actions[0]} and stopping IRS enforcement.\n\nWe negotiate based on what the client can realistically afford. [[NAV:education]]`;
+    }
+
+    if (lower.includes('drake') || lower.includes('sbtpg') || lower.includes('partner') || lower.includes('payout') || lower.includes('commission') || lower.includes('who are we')) {
+      return `### Brand & Compensation\nCommunity Tax is the gold-standard partner for **SBTPG, Drake, and EPS**.\n\n• **Direct Payout:** [[STAT:Direct Partner:$400]] / [[STAT:SBTPG:$350]]\n• **Client Cost:** Investigations discounted to [[STAT:Partner Rate:$349]]\n• **Elite Status:** Nationwide authority for 15+ years.\n\n[[NAV:education]]`;
+    }
+
+    if (lower.includes('webinar') || lower.includes('ce') || lower.includes('credit') || lower.includes('training')) {
+      const next = (TRAINING_CONTENT as any).webinars[0];
+      return `### Upcoming Training\nOur next CE Webinar is on **${next.date}** at **${next.time}**.\n\n**Topic:** ${next.topic}\n\nYou can view the full schedule in the Education Center. [[NAV:education]]`;
+    }
+
+    // 5. Objection Handlers (The "Local Guy" / "Afford")
+    if (lower.includes('objection') || lower.includes('no') || lower.includes('already') || lower.includes('local') || lower.includes('afford')) {
+      const handlers = TRAINING_CONTENT.objectionHandlers;
+      let response = "### Professional Objection Response\n";
+      if (lower.includes('local')) {
+        response += `**Objection:** 'I have a local guy.'\n\n**Rebuttal:** ${handlers[0].rebuttal}`;
+      } else if (lower.includes('afford')) {
+        response += `**Objection:** 'My clients can't afford this.'\n\n**Rebuttal:** ${handlers[1].rebuttal}`;
+      } else {
+        response += `**Objection Specialist:** 'I'll just do it myself.'\n\n**Rebuttal:** ${handlers[2].rebuttal}`;
+      }
+      return response;
+    }
+
+    // 6. Scripts (What to say)
+    if (lower.includes('script') || lower.includes('say') || lower.includes('opening') || lower.includes('call')) {
+      const script = TRAINING_CONTENT.scripts[0];
+      const opening = script.sections[0].lines?.[0]?.text;
+      return `### Pro-Agent Scripting\nWhen opening a call with a partner, keep it crisp:\n\n*"${opening}"*\n\nFocus on the **Official Resolution Partner** status with Drake/SBTPG. [[NAV:education]]`;
+    }
+
+    // 7. Team Summary (Admin Only)
+    if (user.role === 'admin' && (lower.includes('team') || lower.includes('top agent') || lower.includes('members') || lower.includes('synergy'))) {
+      const sorted = [...ctx.teamSummary].sort((a: any, b: any) => b.wins - a.wins);
+      const top = sorted[0];
+      return `### Team Performance Report\nThe team is firing on all cylinders. \n\n• **Front Runner:** [[STAT:Top Performer:${top?.name || 'N/A'}]] at [[STAT:Wins:${top?.wins || 0}]]\n• **Capacity Tracking:** [[STAT:Active Agents:${ctx.teamSummary.length}]]\n\nWould you like to analyze the full Synergy Matrix?\n\n[[NAV:admin-dashboard]]`;
+    }
+
+    // 8. Cycle info
+    if (lower.includes('cycle') || lower.includes('deadline') || lower.includes('remaining') || lower.includes('when') || lower.includes('active')) {
+      return `### Current Pay Cycle\nWe are currently in the **${ctx.timeContext.activeCycle.label}** window.\n\nYou have [[STAT:Time Remaining:${ctx.timeContext.activeCycle.daysRemaining} Days]] to finalize your onboardings and activations. Grind hard!`;
+    }
+
+    return null;
+  };
+
+  const callOllama = async (prompt: string, context: string): Promise<string | null> => {
+    try {
+      const res = await fetch('http://localhost:11434/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          model: 'llama3',
+          messages: [
+            {
+              role: 'system',
+              content: `You are Taxter, the master performance coach for Community Tax.
+                        GOAL: Help agents win by bridging the gap between their LIVE PERFORMANCE and our COMPANY KNOWLEDGE.
+                        STYLE: Professional, encouraging, and highly detailed.
+                        KNOWLEDGE BASE: You have access to the full training manual (scripts, compensation, process, webinars) AND the user's live performance data.
+                        RULES:
+                        1. ALWAYS use [[STAT:Label:Value]] for metrics.
+                        2. ALWAYS use [[NAV:View]] for navigation.
+                        3. NEVER mention being in 'Local Mode' or 'Data Only Mode'. You are simply Taxter.
+                        4. Live Context: ${context}
+                        5. Training Manual: ${JSON.stringify(TRAINING_CONTENT)}`
+            },
+            ...messages.slice(-4).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
+            { role: 'user', content: prompt }
+          ],
+          stream: false
+        })
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.message.content;
+    } catch (e) {
+      console.warn("[Taxter] Ollama not reached.", e);
+      return null;
+    }
+  };
+
   const handleSend = async (text: string = input) => {
     if (!text.trim() || isTyping) return;
     const userMessage: Message = { id: Date.now().toString(), role: 'user', text };
@@ -228,65 +369,29 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     setInput('');
     setIsTyping(true);
 
-    try {
-      const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-      console.log('[Taxter] API Key present:', !!apiKey, '| Length:', apiKey?.length ?? 0);
-      if (!apiKey) {
-        throw new Error("GROQ_MISSING");
-      }
-      const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+    const context = prepareContextData();
+    const heuristicResponse = handleLocalQuery(text);
 
-      const coaching = generateCoachingInsights(allAppointments);
+    if (heuristicResponse) {
+      setTimeout(() => {
+        setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: heuristicResponse }]);
+        setIsTyping(false);
+      }, 800);
+      return;
+    }
 
-      const chatHistory = messages.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Taxter'}: ${m.text}`).join('\n');
+    const ollamaResponse = await callOllama(text, context);
 
-      const systemPrompt = `You are Taxter, the proactive performance coach and statistical AI for Community Tax.
-        GOAL: Provide instant data-driven insights and suggest high-value habits.
-        
-        CONTEXT AWARENESS:
-        - Recent Conversation: ${chatHistory}
-        - Coaching Insights: ${coaching.join(' | ')}
-        - Last 12 Cycles: ${prepareContextData()}
-        - PROD KNOWLEDGE & SCRIPTS: ${JSON.stringify(TRAINING_CONTENT)}
-
-        CAPABILITIES:
-        - Predict 'Success Probability' using peak time data. 
-        - Track daily totals and historical growth.
-        - Give habit advice like "Follow up faster on transfers" based on Coaching Insights.
-        - COACHING: Help agents with "What to say" based on the provided SCRIPTS and PRODUCT KNOWLEDGE. Focus on IRS debt > $7k.
-
-        FORMATTING: Use [[STAT:Label:Value]] for key metrics. Use [[NAV:View]] or [[OPEN_APPT:ID:Name]] to assist navigation.
-        STYLE: Professional, encouraging, and razor-sharp with numbers.`;
-
-      const completion = await groq.chat.completions.create({
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: text }
-        ],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.7,
-      });
-
-      const responseText = completion.choices[0]?.message?.content;
-
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: responseText || "I was unable to calculate that right now." }]);
-    } catch (e: any) {
-      console.error("AI Error Details:", e);
-      const msg = e?.message || "Internal processing error";
-      const isMissingKey = msg === 'GROQ_MISSING' || msg.includes("API key not found") || msg.includes("GROQ_MISSING");
-      const isAuthError = msg.includes("401") || msg.includes("invalid_api_key") || msg.includes("Unauthorized");
-
-      let userFriendlyMsg: string;
-      if (isMissingKey) {
-        userFriendlyMsg = "⚙️ AI Unavailable: The API key is not configured. Please contact your administrator to set up the VITE_GROQ_API_KEY in the deployment settings.";
-      } else if (isAuthError) {
-        userFriendlyMsg = "🔑 AI Auth Error: The API key is invalid or expired. Please update it in your Vercel Environment Variables.";
-      } else {
-        userFriendlyMsg = `Taxter encountered an error: ${msg}. Please try again.`;
-      }
-
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: userFriendlyMsg }]);
-    } finally { setIsTyping(false); }
+    if (ollamaResponse) {
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: ollamaResponse }]);
+      setIsTyping(false);
+    } else {
+      setTimeout(() => {
+        const fallback = "I'm focusing on your active cycle and the Community Tax playbook. Ask me about your revenue, the 2-step investigation process, or for a script to handle a specific partner objection.";
+        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: fallback }]);
+        setIsTyping(false);
+      }, 1000);
+    }
   };
 
   return (

@@ -24,12 +24,11 @@ interface BusinessCardModalProps {
     hasNext?: boolean;
     hasPrev?: boolean;
     referralRate: number;
-    onUpdateReferrals: (id: string, count: number) => void;
 }
 
 export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
     isOpen, onClose, appointment, onEdit, onDelete, onMoveStage, onSaveNotes,
-    onNext, onPrev, hasNext, hasPrev, referralRate, onUpdateReferrals
+    onNext, onPrev, hasNext, hasPrev, referralRate
 }) => {
     const { user } = useUser();
     const [notes, setNotes] = useState('');
@@ -59,11 +58,7 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
     const isTransferQueue = stage === AppointmentStage.TRANSFERRED;
     const isActionable = stage === AppointmentStage.PENDING || stage === AppointmentStage.RESCHEDULED;
 
-    const handleUpdateReferrals = (delta: number) => {
-        const current = appointment.referralCount || 0;
-        const next = Math.max(0, current + delta);
-        onUpdateReferrals(appointment.id, next);
-    };
+
 
     const copyToClipboard = (text: string, type: 'phone' | 'name' | 'email') => {
         if (!text) return;
@@ -135,26 +130,7 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                         </div>
                     </div>
 
-                    {isOnboarded && (referralCount > 0 || user?.role === 'admin') && (
-                        <div className="mb-6 animate-in slide-in-from-top-2 duration-500">
-                            <div className="flex items-center justify-between mb-3 px-1">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><IconUsers className="w-4 h-4 text-rose-500" /> Referral Ledger</h4>
-                                <span className="text-[9px] font-black text-rose-600 bg-rose-50 dark:bg-rose-900/20 px-2 py-0.5 rounded-lg">+{formatCurrency(referralCount * referralRate)} Bonus</span>
-                            </div>
-                            <div className="bg-rose-50/50 dark:bg-rose-900/10 p-5 rounded-3xl border border-rose-100 dark:border-rose-900/30 flex items-center justify-between">
-                                <div>
-                                    <div className="text-2xl font-black text-rose-600 dark:text-rose-400">{referralCount}</div>
-                                    <div className="text-[10px] font-bold text-slate-500 uppercase">Successful Referrals</div>
-                                </div>
-                                {user?.role === 'admin' && (
-                                    <div className="flex gap-2">
-                                        <button onClick={() => handleUpdateReferrals(-1)} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border border-rose-200 text-rose-600 hover:bg-rose-50 font-black transition-all">-</button>
-                                        <button onClick={() => handleUpdateReferrals(1)} className="w-10 h-10 rounded-xl bg-rose-600 text-white shadow-lg shadow-rose-200 hover:bg-rose-700 flex items-center justify-center transition-all"><IconPlus className="w-5 h-5" /></button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+
 
                     <div className="flex-1 flex flex-col min-h-[150px]">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 mb-2 px-1"><IconNotes className="w-3 h-3" /> Partner Session Logs</label>

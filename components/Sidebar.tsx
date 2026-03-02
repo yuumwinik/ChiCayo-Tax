@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { View, UserRole, AvatarId } from '../types';
-import { IconCalendar, IconLayout, IconUsers, IconDollarSign, IconLogo, IconLogout, IconSidebarToggle, IconLock, getAvatarIcon, IconActivity, IconSparkles, IconBook } from './Icons';
+import { IconCalendar, IconLayout, IconUsers, IconDollarSign, IconLogo, IconLogout, IconSidebarToggle, IconLock, getAvatarIcon, IconActivity, IconSparkles, IconBook, IconClock } from './Icons';
 
 interface SidebarProps {
   currentView: View;
@@ -35,7 +35,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: IconLayout, role: 'all' },
-    { id: 'education', label: 'Education Center', icon: IconBook, role: 'all' },
+    { id: 'education', label: 'Education Center', icon: IconBook, role: 'agent' },
+    { id: 'reminders', label: 'Reminders', icon: IconClock, role: 'agent' },
     { id: 'user-analytics', label: 'My Stats', icon: IconActivity, role: 'agent' },
     { id: 'calendar', label: 'Calendar', icon: IconCalendar, role: 'all' },
     { id: 'onboarded', label: 'Onboarded', icon: IconUsers, role: 'all' },

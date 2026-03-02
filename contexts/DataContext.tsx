@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { Appointment, Incentive, IncentiveRule, User, PayCycle, ActivityLog, ReferralHistoryEntry, EarningWindow, AppointmentStage } from '../types';
+import { Appointment, Incentive, IncentiveRule, User, PayCycle, ActivityLog, ReferralHistoryEntry, EarningWindow, AppointmentStage, Reminder } from '../types';
 import { generateId } from '../utils/dateUtils';
 import { supabase } from '../utils/supabase';
 import { useUser } from './UserContext';
@@ -15,6 +15,9 @@ interface DataContextType {
     selfCommissionRate: number;
     referralCommissionRate: number;
     commissionActivation: number;
+    reminders: Reminder[];
+    handleSaveReminder: (data: Partial<Reminder>) => Promise<void>;
+    handleDeleteReminder: (id: string) => void;
     refreshData: () => Promise<void>;
     loadingData: boolean;
     setCommissionRate: (rate: number) => void;
@@ -36,7 +39,11 @@ interface DataContextType {
         agentStats: Record<string, {
             onboards: number;
             activations: number;
-            totalReferrals: number;
+            selfActivations: number;
+            crossActivations: number;
+            wasActivatedByOthers: number;
+            selfOnboardActivations: number;
+            aeAssistedActivations: number;
             ratio: string;
             avgDaysToActivate: string;
         }>;
@@ -55,6 +62,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [payCycles, setPayCycles] = useState<PayCycle[]>([]);
     const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+    const [reminders, setReminders] = useState<Reminder[]>(() => {
+        const saved = localStorage.getItem('agent_reminders');
+        return saved ? JSON.parse(saved) : [];
+    });
     const [lastAction, setLastAction] = useState<{ id: string, stage: AppointmentStage, earnedAmount: number, onboardedAt?: string, notes?: string } | null>(null);
 
     // Settings
@@ -139,6 +150,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
+    useEffect(() => {
+        localStorage.setItem('agent_reminders', JSON.stringify(reminders));
+    }, [reminders]);
+
+    const handleSaveReminder = useCallback(async (data: Partial<Reminder>) => {
+        const id = data.id || generateId();
+        const now = new Date().toISOString();
+        const newReminder: Reminder = {
+            id,
+            userId: user?.id || 'unknown',
+            name: data.name || '',
+            phone: data.phone || '',
+            email: data.email || '',
+            callBackAt: data.callBackAt || now,
+            notes: data.notes || '',
+            createdAt: data.createdAt || now,
+        };
+
+        setReminders(prev => {
+            const index = prev.findIndex(r => r.id === id);
+            if (index >= 0) {
+                const updated = [...prev];
+                updated[index] = newReminder;
+                return updated;
+            }
+            return [...prev, newReminder];
+        });
+    }, [user]);
+
+    const handleDeleteReminder = useCallback((id: string) => {
+        setReminders(prev => prev.filter(r => r.id !== id));
+    }, []);
+
     // Initial fetch
     useEffect(() => {
         refreshData();
@@ -184,44 +228,49 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const cleanPhone = row.phone.replace(/\D/g, '');
 
             const appt = allAppointments.find(a =>
-                (a.stage === AppointmentStage.ONBOARDED) &&
+                (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED) &&
                 (a.name.toLowerCase().trim() === cleanName || a.phone.replace(/\D/g, '').includes(cleanPhone))
             );
 
             if (appt) {
-                const currentRefs = appt.referralCount || 0;
-                const newTotalRefsFromReport = row.referrals;
-                const delta = newTotalRefsFromReport - currentRefs;
+                // If this is the FIRST referral ever seen for this partner, it's an Activation
+                const isFirstActivation = (appt.referralCount || 0) === 0 && row.referrals > 0;
 
-                if (delta > 0) {
-                    const incentiveId = generateId();
-                    const historyId = generateId();
-                    const updatedHistory: ReferralHistoryEntry[] = [...(appt.referralHistory || []), { id: historyId, date: row.date || now, count: delta, incentiveId }];
+                if (isFirstActivation || row.referrals > (appt.referralCount || 0)) {
+                    const delta = isFirstActivation ? 1 : row.referrals - (appt.referralCount || 0); // Only track 1st if we follow the new rule strictly, but row.referrals might be > 1. 
+                    // New Rule: "We won't track all referrals but ONLY the 1st". 
+                    // Interpretation: Activation is a one-time thing. referral_count should probably stay at 1.
 
-                    await supabase.from('appointments').update({
-                        referral_count: newTotalRefsFromReport,
-                        last_referral_at: now,
-                        referral_history: updatedHistory
-                    }).eq('id', appt.id);
+                    if (!appt.activatedAt) {
+                        const incentiveId = generateId();
+                        const rewardCents = commissionActivation; // $10 for activation
 
-                    const bonusCents = delta * referralCommissionRate;
-                    await supabase.from('incentives').insert({
-                        id: incentiveId,
-                        user_id: appt.userId,
-                        amount_cents: bonusCents,
-                        label: `Ref Bonus Delta: ${delta} Lead(s) from ${appt.name}`,
-                        applied_cycle_id: activeCycle.id,
-                        related_appointment_id: appt.id,
-                        created_at: now
-                    });
+                        await supabase.from('appointments').update({
+                            stage: AppointmentStage.ACTIVATED,
+                            activated_at: now,
+                            activated_by_user_id: appt.userId, // Admin import: original agent gets it
+                            referral_count: 1,
+                            last_referral_at: now
+                        }).eq('id', appt.id);
 
-                    matchedCount++;
-                    newBonusTotal += bonusCents;
+                        await supabase.from('incentives').insert({
+                            id: incentiveId,
+                            user_id: appt.userId,
+                            amount_cents: rewardCents,
+                            label: `Partner Activation: ${appt.name}`,
+                            applied_cycle_id: activeCycle.id,
+                            related_appointment_id: appt.id,
+                            created_at: now
+                        });
+
+                        matchedCount++;
+                        newBonusTotal += rewardCents;
+                    }
                 }
             }
         }
 
-        alert(`Ledger Sync Complete.\n- Successfully matched ${matchedCount} partners.\n- Distributed ${((newBonusTotal / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' }))} in new referral bonuses.`);
+        alert(`Ledger Sync Complete.\n- Successfully activated/updated ${matchedCount} partners.\n- Distributed ${((newBonusTotal / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' }))} in activation rewards.`);
         await refreshData();
     };
 
@@ -456,29 +505,57 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 return;
             }
             if (stage === AppointmentStage.ACTIVATED) {
+                if (!activeCycle) { alert("Active Pay Cycle Required to log Activation."); return; }
                 const now = new Date().toISOString();
+                const loggerId = user?.id || appt.userId;
+
+                // Set activation reward
+                const rewardCents = commissionActivation; // $10
+                const incentiveId = generateId();
+
                 const { error } = await supabase.from('appointments').update({
                     stage: AppointmentStage.ACTIVATED,
-                    earned_amount: commissionActivation,
                     activated_at: now,
+                    activated_by_user_id: loggerId,
+                    referral_count: 1,
+                    last_referral_at: now,
                     original_user_id: appt.originalUserId || appt.userId,
                     original_onboard_type: appt.originalOnboardType || (appt.aeName === (allUsers.find(u => u.id === appt.userId)?.name) ? 'self' : 'transfer'),
                     original_ae_name: appt.originalAeName || appt.aeName || null
                 }).eq('id', id);
+
                 if (error) throw error;
+
+                // Insert Activation reward as an Incentive for the logger
+                await supabase.from('incentives').insert({
+                    id: incentiveId,
+                    user_id: loggerId,
+                    amount_cents: rewardCents,
+                    label: `Partner Activation: ${appt.name}`,
+                    applied_cycle_id: activeCycle.id,
+                    related_appointment_id: id,
+                    created_at: now
+                });
+
                 await refreshData();
                 return;
             }
             if (stage === AppointmentStage.DECLINED) {
                 const nurtureDate = new Date();
                 nurtureDate.setDate(nurtureDate.getDate() + 30);
-                const { error } = await supabase.from('appointments').update({ stage, earned_amount: 0, nurture_date: nurtureDate.toISOString(), onboarded_at: null }).eq('id', id);
+                const { error } = await supabase.from('appointments').update({ stage, earned_amount: 0, nurture_date: nurtureDate.toISOString(), onboarded_at: null, activated_at: null }).eq('id', id);
                 if (error) throw error;
                 await refreshData();
                 return;
             }
 
-            const { error } = await supabase.from('appointments').update({ stage, earned_amount: 0, onboarded_at: null }).eq('id', id);
+            const { error } = await supabase.from('appointments').update({
+                stage,
+                earned_amount: (stage === AppointmentStage.PENDING || stage === AppointmentStage.RESCHEDULED || stage === AppointmentStage.TRANSFERRED) ? 0 : appt.earnedAmount,
+                onboarded_at: (stage === AppointmentStage.PENDING || stage === AppointmentStage.RESCHEDULED || stage === AppointmentStage.TRANSFERRED || stage === AppointmentStage.NO_SHOW) ? null : appt.onboardedAt,
+                activated_at: (stage === AppointmentStage.PENDING || stage === AppointmentStage.RESCHEDULED || stage === AppointmentStage.TRANSFERRED || stage === AppointmentStage.NO_SHOW) ? null : appt.activatedAt,
+                referral_count: (stage === AppointmentStage.PENDING || stage === AppointmentStage.RESCHEDULED || stage === AppointmentStage.TRANSFERRED || stage === AppointmentStage.NO_SHOW) ? 0 : appt.referralCount
+            }).eq('id', id);
             if (error) throw error;
             await refreshData();
         } catch (err: any) {
@@ -567,17 +644,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [allAppointments, activeCycle, referralCommissionRate]);
 
     const performanceStats = useMemo(() => {
-        const stats: Record<string, { onboards: number; activations: number; totalReferrals: number; ratio: string; avgDaysToActivate: string }> = {};
+        const stats: Record<string, {
+            onboards: number;
+            activations: number;
+            selfActivations: number;
+            crossActivations: number;
+            wasActivatedByOthers: number;
+            selfOnboardActivations: number;
+            aeAssistedActivations: number;
+            ratio: string;
+            avgDaysToActivate: string
+        }> = {};
 
         allUsers.forEach(u => {
-            const userAppts = allAppointments.filter(a => a.userId === u.id);
-            const onboards = userAppts.filter(a => !!a.onboardedAt).length;
-            const activations = userAppts.filter(a => a.stage === AppointmentStage.ACTIVATED).length;
-            const totalReferrals = userAppts.reduce((sum, a) => sum + (a.referralCount || 0), 0);
+            const userOnboards = allAppointments.filter(a => a.userId === u.id && !!a.onboardedAt);
+            const activationsDoneByMe = allAppointments.filter(a => a.activatedByUserId === u.id);
 
-            const ratio = onboards > 0 ? (totalReferrals / onboards).toFixed(1) : '0';
+            const onboards = userOnboards.length;
+            const activations = activationsDoneByMe.length;
 
-            const activationTimes = userAppts
+            const selfActivations = activationsDoneByMe.filter(a => a.userId === u.id).length;
+            const crossActivations = activationsDoneByMe.filter(a => a.userId !== u.id).length;
+            const wasActivatedByOthers = userOnboards.filter(a => !!a.activatedAt && a.activatedByUserId !== u.id).length;
+
+            const selfOnboardActivations = activationsDoneByMe.filter(a => a.originalOnboardType === 'self').length;
+            const aeAssistedActivations = activationsDoneByMe.filter(a => a.originalOnboardType !== 'self').length;
+
+            const myOnboardsActivated = userOnboards.filter(a => !!a.activatedAt).length;
+            const ratio = onboards > 0 ? (myOnboardsActivated / onboards * 100).toFixed(0) + '%' : '0%';
+
+            const activationTimes = activationsDoneByMe
                 .filter(a => a.onboardedAt && a.activatedAt)
                 .map(a => {
                     const diff = new Date(a.activatedAt!).getTime() - new Date(a.onboardedAt!).getTime();
@@ -587,7 +683,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 ? (activationTimes.reduce((s, t) => s + t, 0) / activationTimes.length).toFixed(1)
                 : 'N/A';
 
-            stats[u.id] = { onboards, activations, totalReferrals, ratio, avgDaysToActivate: avgDays };
+            stats[u.id] = {
+                onboards,
+                activations,
+                selfActivations,
+                crossActivations,
+                wasActivatedByOthers,
+                selfOnboardActivations,
+                aeAssistedActivations,
+                ratio,
+                avgDaysToActivate: avgDays
+            };
         });
 
         return { agentStats: stats };
@@ -605,6 +711,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             selfCommissionRate,
             referralCommissionRate,
             commissionActivation,
+            reminders,
+            handleSaveReminder,
+            handleDeleteReminder,
             refreshData,
             loadingData,
             setCommissionRate,

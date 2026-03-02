@@ -36,126 +36,172 @@ export interface ProductComparison {
 }
 
 export const TRAINING_CONTENT = {
+    company: {
+        name: "Community Tax",
+        status: "Official Partner for SBTPG, Drake, Pathward, and EPS",
+        specialization: "Tax Debt Resolution (Nationwide)",
+        yearsInBusiness: "15+ Years",
+        role: "The 'Full-Service Resolution Department' for Tax Professionals",
+        targetClient: "Owes $7,000+ in IRS or State tax debt",
+        coreServices: [
+            "Enforcement Protection (Wage Garnishments, Bank Levies, Asset Seizures)",
+            "IRS/State Negotiations (Offer in Compromise, Installment Agreements, Penalty Abatement)",
+            "Complex Debt Management (Tax Liens, Payroll Tax, Custom Solutions)",
+            "Compliance (Back-tax filing to bring clients into good standing)"
+        ]
+    },
     scripts: [
         {
-            id: 'onboard_script',
-            title: 'Partner Onboarding Script (Community Tax)',
-            icon: 'IconBriefcase',
+            id: 'opening_script',
+            title: 'Call Introduction (Opening Script)',
+            icon: 'IconPhone',
             sections: [
                 {
-                    id: 'obj',
-                    title: '1. Call Objective',
-                    content: 'Introduce tax professionals to the Community Tax Partnership Program. Focus on how they can earn substantial commissions ($350 - $400) by referring clients with $7,000+ IRS/State debt. Build trust as a Santabarbara TPG / Drake / Password / EPS preferred partner.'
-                },
-                {
-                    id: 'opening',
-                    title: '2. Professional Opening',
+                    id: 'intro',
+                    title: 'The Pro Introduction',
+                    content: 'How to lead the conversation as an expert.',
                     lines: [
-                        { id: 'o1', role: 'agent', text: "Hey [Partner Name], this is [My Name] calling from the Community Tax dedicated partner team. I noticed you’re a high-volume tax professional in the [Market] area—how’s your tax season wrapping up?", isQuickCopy: true },
-                        { id: 'o2', role: 'agent', text: "The reason for my call is straightforward: As a preferred partner for providers like SBTPG and Drake, Community Tax helps tax pros like you monetize the clients you’d normally have to turn away—clients who owe $7,000 or more to the IRS or State.", isQuickCopy: true },
-                        { id: 'o3', role: 'note', text: "Key Value: We are their resolution arm. They do the prep, we do the debt. They get the commission." }
-                    ]
-                },
-                {
-                    id: 'commission-pitch',
-                    title: '3. The $400 Commission Opportunity',
-                    lines: [
-                        { id: 'cp1', role: 'agent', text: "Our direct partners earn a $400 commission for every qualified referral that onboards for resolution. If you're utilizing the SBTPG integration, it’s a seamless $350 payout directly through your software setup.", isQuickCopy: true },
-                        { id: 'cp2', role: 'partner', text: "So I just log the lead and you guys do everything else?" },
-                        { id: 'cp3', role: 'agent', text: "Exactly. You provide the name and number of someone who owes $7k+, and our AEs take it from there. You can track the entire status in your real-time portal.", isQuickCopy: true }
+                        { id: 'op1', role: 'agent', text: "Hi, this is [User Name] from Community Tax. I’m calling because we’ve noticed a lot of tax professionals are seeing clients with significant IRS debt this season, and I wanted to make sure you knew how to use the Resolution Extension integrated into your software.", isQuickCopy: true },
+                        { id: 'op2', role: 'agent', text: "Do you currently have any clients who owe more than $7,000 to the IRS or State?", isQuickCopy: true },
+                        { id: 'op3', role: 'note', text: "✅ If YES: Pivot immediately to the 'Understand Their Practice' section." },
+                        { id: 'op4', role: 'note', text: "❌ If NO: Explain the value-add (Free Consultation, Investigation) so they remember you." }
                     ]
                 }
             ]
         },
         {
-            id: 'referral_script',
-            title: 'Client Referral Activation (Callback)',
-            icon: 'IconUsers',
+            id: 'onboard_script',
+            title: 'Partner Onboarding Call Script (BDR Version)',
+            icon: 'IconBriefcase',
             sections: [
                 {
-                    id: 'ref-open',
-                    title: 'The Activation Bonus Call',
-                    content: 'Targeting existing contacts to find new referrals. You earn a $10 Activation Bonus for every successful new lead logged during these follow-ups.'
+                    id: 'intro',
+                    title: '1. Reconnecting with Past Partners',
+                    content: 'Confirm awareness of the referral program.',
+                    lines: [
+                        { id: 'i1', role: 'agent', text: "Hello, is this [Partner Name]? This is [User Name] calling from Community Tax — how are you today?", isQuickCopy: true },
+                        { id: 'i2', role: 'agent', text: "I don’t mean to call you out of the blue, [Partner Name], but I’m reaching out because I see that you previously opted into our Tax Resolution Referral Program through [SBTPG / Drake / Pathward] — does that ring a bell?", isQuickCopy: true },
+                        { id: 'i3', role: 'note', text: "🤔 If Unsure: 'Our partnership allows you to refer clients to us when they owe money to the IRS. We provide a full-service experience without you taking on the liability.'" }
+                    ]
                 },
                 {
-                    id: 'ref-script',
-                    title: 'The "Friend & Family" Script',
+                    id: 'qual',
+                    title: '2. Qualification Setup',
+                    content: 'Explain why we are calling now and the benefits of the account review.',
                     lines: [
-                        { id: 'ro1', role: 'agent', text: "Hey [Client Name], just checking in on your file. We’ve been seeing a lot of new IRS activity in [Area] lately. Do you have any friends, family, or business associates who are also struggling with back taxes right now?", isQuickCopy: true },
-                        { id: 'ro2', role: 'agent', text: "We have a special 'Priority Access' window right now for new referrals who owe $7k+. If you can think of anyone, I can get them a free analysis by our senior team today.", isQuickCopy: true }
+                        { id: 'q1', role: 'agent', text: "Great, [Partner Name]. The reason I’m calling today is that we’re reconnecting with all of our partners before the new year to do a quick account review ahead of the upcoming tax season.", isQuickCopy: true },
+                        { id: 'q2', role: 'agent', text: "This review helps you better use our tax resolution services for your clients and also gets you registered for additional free benefits, including our CE webinars. Would you be interested in learning more?", isQuickCopy: true }
+                    ]
+                },
+                {
+                    id: 'trigger',
+                    title: '3. The Gold Standard Trigger Question',
+                    lines: [
+                        { id: 't1', role: 'agent', text: "The whole idea of the partnership is to give you a simple way to help clients without it eating up YOUR time. When a client owes, you just ask one question: 'Are you going to be able to pay this debt off in full?'", isQuickCopy: true },
+                        { id: 't2', role: 'agent', text: "If NO, that's the perfect time to say: 'We partner with a nationwide tax resolution firm called Community Tax. The next step is a free consultation to review your options.'", isQuickCopy: true }
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'discovery_script',
+            title: 'Discovery & Need Analysis',
+            icon: 'IconActivity',
+            sections: [
+                {
+                    id: 'current-state',
+                    title: 'Understanding Their Practice',
+                    content: 'Determine if they see the value in resolution.',
+                    lines: [
+                        { id: 'ds1', role: 'agent', text: "So [Partner Name], when a client comes in and owes $20k, $50k, or more—what’s your current process for helping them?", isQuickCopy: true },
+                        { id: 'ds2', role: 'agent', text: "Do you handle the resolution in-house, or do you find yourself having to turn those clients away?", isQuickCopy: true },
+                        { id: 'ds3', role: 'note', text: "💡 Key Insight: If they 'turn them away', highlight that they are leaving $350+ on the table per client." }
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'onboarded_non_activated',
+            title: 'Follow-up: Onboarded Non Activated',
+            icon: 'IconActivity',
+            sections: [
+                {
+                    id: 'touch-base',
+                    title: 'The Touch Base Script',
+                    lines: [
+                        { id: 'tb1', role: 'agent', text: "Hey, how are you? This is [User Name] calling from Community Tax. You spoke with our team back on [Onboarding Date] where we onboarded you into our Partner Program.", isQuickCopy: true },
+                        { id: 'tb2', role: 'agent', text: "I’m just calling to touch base and see if you had any clients recently who might have been potential referrals, any questions on how everything works?", isQuickCopy: true },
+                        { id: 'tb3', role: 'agent', text: "Just wanted to remind you of that feature available to you through TPG—If there’s any client with an outstanding debt to the IRS over $7,000, you can use the Referral System to send them directly to my team.", isQuickCopy: true },
+                        { id: 'tb4', role: 'agent', text: "We’ll call for a Free Consultation, fully investigate the issue, and provide a Resolution Strategy. You stay as their trusted Tax Professional and get updated within the referral portal.", isQuickCopy: true }
                     ]
                 }
             ]
         }
+    ],
+    theProcess: {
+        step1: {
+            title: "Phase 1: Investigation (Fact-Finding)",
+            duration: "~2 Weeks",
+            actions: [
+                "Pull IRS and/or State transcripts and records",
+                "Perform year-by-year transcript analysis",
+                "Conduct a detailed financial interview (Income vs Expenses)",
+                "Develop a Guaranteed Resolution Strategy"
+            ],
+            output: "Comprehensive Strategy Call with the Client."
+        },
+        step2: {
+            title: "Phase 2: Resolution / Representation",
+            actions: [
+                "Take over all IRS/State communication (Power of Attorney)",
+                "Stop Wage Garnishments and Bank Levies immediately",
+                "Prevent Asset Seizures and stop enforcement actions",
+                "Negotiate OIC, Installment Agreements, or Hardship status"
+            ]
+        }
+    },
+    compensation: [
+        { partner: "SBTPG (Santa Barbara)", amount: "$350 Payout", breakdown: "Total $350 Reward: $150 upon Investigation start + $200 upon Representation moving forward. Standard for TPG integrated users." },
+        { partner: "Direct Partner", amount: "$400 Payout", breakdown: "Total $400 Reward: $150 Investigation + $250 Representation. Direct partners may earn more for higher volume cases." },
+        { partner: "Refund Advantage / EPS", amount: "12.5% Rev Share", breakdown: "12.5% of total resolution fee. Paid as fees are received." },
+        { partner: "Drake Software", amount: "Software Integrated", breakdown: "Direct referral button within Drake. Earn through direct commissions or volume bonuses." }
+    ],
+    pricing: {
+        investigation: {
+            standard: "$499 / $549",
+            partnerDiscounted: "$349",
+            note: "Standard is $499 ($549 for debts > $10k). Partner referrals provide a $200+ discount for the client."
+        },
+        representation: "Flat fee quoted during the Step 1 Strategy Call based on case complexity."
+    },
+    faqs: [
+        { q: "How does the client pay for the service?", a: "Clients can pay via credit card, ACH, or often through 'Fee-from-Refund' if they have a current year refund pending. We offer flexible payment plans for the resolution phase." },
+        { q: "What is the minimum debt requirement?", a: "To ensure the best ROI for the client and the partner, we typically require a minimum of $7,000 in combined IRS or State tax debt." },
+        { q: "Is this integrated into Drake Software?", a: "Yes. Look for the 'Tax Resolution' or 'Community Tax' button in the Drake software dashboard to send referrals with one click." }
     ],
     objectionHandlers: [
         {
             title: "The 'I have a local guy' Objection",
-            rebuttal: "I completely understand. Most of our best partners started that way. What they found is that local CPAs often don’t have the nationwide scale or dedicated Power of Attorney teams that Community Tax has. We handle thousands of cases and offer the highest guaranteed referral rate in the industry."
+            rebuttal: "I completely understand. What many partners found is that local CPAs often don’t have the nationwide scale or dedicated Power of Attorney teams that Community Tax has. We rotate 300+ staff on dedicated IRS practitioner lines for faster results."
         },
         {
-            title: "The 'My clients can't afford resolution' Objection",
-            rebuttal: "That's exactly why they need us. The IRS is already taking their money through garnishments or liens. We work to stop those immediately. Plus, our initial analysis is 100% free, so there's zero risk for them to find out their actual options."
-        },
-        {
-            title: "The 'I'll just do it myself' Objection",
-            rebuttal: "You certainly can, but would you represent yourself in court? Tax resolution is a specialized legal field. We have Enrolled Agents and Attorneys who deal with these specific officers every day. We often save clients far more than our fee covers."
-        },
-        {
-            title: "The 'How do I know you're legit?' Objection",
-            rebuttal: "We are the official resolution partner for SBTPG, Drake, and EPS. These are the giants of the tax industry. They've vetted us so you don't have to. We've resolved over $800M in tax debt."
+            title: "The 'Unsure / Busy Season' Objection",
+            rebuttal: "I completely understand—it’s a busy time. The goal is simple: we help you provide a full-service experience without you having to do the extra work or take on the liability of tax resolution."
         }
     ],
     oneLiners: [
-        { category: 'Opening', text: "We monetize the clients you’d normally have to turn away." },
-        { category: 'Value', text: "We stop the garnishments and liens while you keep the client relationship." },
-        { category: 'Urgency', text: "The IRS doesn't wait—neither should your client." },
-        { category: 'Trust', text: "The official resolution partner for SBTPG and Drake Software." }
+        { category: 'Pitch', text: "We monetize the clients you’d normally have to turn away." },
+        { category: 'Value', text: "Think of us as your Full-Service Resolution Department." },
+        { category: 'Close', text: "Are you going to be able to pay this debt off in full?" }
     ],
-    productInfo: {
-        title: 'Community Tax Brand Secrets',
-        debtThreshold: '$7,000+',
-        keyPoints: [
-            { title: 'The Gold Standard', detail: 'Community Tax is the top-rated nationwide tax resolution firm, serving as the official partner for SBTPG, Drake, and EPS.' },
-            { title: 'High-Value Leads', detail: 'Our focus is strictly on clients with $7,000+ in total tax debt (IRS or State).' },
-            { title: 'Full Resolution', detail: 'We specialize in OIC (Offer in Compromise), Penalty Abatement, Liens, Garnishments, and Installment Agreements.' },
-            { title: 'Seamless Payouts', detail: '$400 for direct partners / $350 for SBTPG software integrated partners.' },
-            { title: 'Attorney-Led', detail: 'Cases are handled by licensed Attorneys, CPAs, and Enrolled Agents with full Power of Attorney.' }
-        ],
-        comparisons: [
-            { feature: 'Commission', communityTax: '$350 - $400', localCPA: '$0 - $100' },
-            { feature: 'License Type', communityTax: 'JD / CPA / EA', localCPA: 'CPA only' },
-            { feature: 'IRS Access', communityTax: 'Dedicated Practitioner Line', localCPA: 'Standard Support' },
-            { feature: 'Scale', communityTax: 'Nationwide / 300+ Staff', localCPA: 'Local / 1-5 Staff' }
-        ]
-    },
-    faqs: [
-        {
-            q: 'What makes Community Tax better than a local CPA?',
-            a: 'Scale and Specialization. Local CPAs handle prep; we handle resolution. We have dedicated teams that do nothing but negotiate with the IRS 40 hours a week.'
-        },
-        {
-            q: 'How do I track my $400 payout?',
-            a: 'Your Real-Time Partner Portal (this app) shows every stage of your referral, from "Pending" to "Onboarded".'
-        },
-        {
-            q: 'Does it cost the client anything for the call?',
-            a: 'No. The initial Consultation and Tax Debt Analysis are 100% free and no-obligation.'
-        },
-        {
-            q: 'Can we help with unfiled taxes?',
-            a: 'Absolutely. We help clients get compliant by filing all back years as part of their larger resolution strategy.'
-        },
-        {
-            q: 'What is the SBTPG integration?',
-            a: 'If the tax professional uses Santa Barbara TPG for their refund processing, they can refer directly through their software dashboard.'
-        }
+    webinars: [
+        { date: "Current Month", topic: "Cracking the IRS Notice Code: Client Representation", status: "CE-Accredited" },
+        { date: "Next Month", topic: "Federal Tax Liens Unlocked: Priority Battles & Remedies", status: "CE-Accredited" }
     ],
-    callQualityChecklist: [
-        "Verified Tax Debt is $7,000+ (IRS or State)",
-        "Established trust using SBTPG/Drake Partnership",
-        "Confirmed the Partner Payout ($350-$400)",
-        "Handled at least one objection professionally",
-        "Asked for a specific time for the walkthrough"
+    portals: [
+        { name: "Pathward / Refund Advantage", url: "ra.community.tax" },
+        { name: "Drake Software", url: "drake.community.tax/signUp" },
+        { name: "EPS", url: "eps.community.tax" },
+        { name: "Direct Partners", url: "partners.community.tax" }
     ]
 };

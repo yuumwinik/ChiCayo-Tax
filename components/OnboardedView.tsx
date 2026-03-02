@@ -19,6 +19,7 @@ interface OnboardedViewProps {
     currentWindow?: EarningWindow | null; // For Cycle gamification
     payCycles?: PayCycle[]; // For filtering
     referralRate: number;
+    incentives?: any[];
 }
 
 export const OnboardedView: React.FC<OnboardedViewProps> = ({
@@ -32,7 +33,8 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
     preferredDialer,
     currentWindow,
     payCycles = [],
-    referralRate
+    referralRate,
+    incentives = []
 }) => {
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
     const [selectedCycleId, setSelectedCycleId] = useState<string>('lifetime');
@@ -398,6 +400,42 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                                 Dominating!
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {filtered.filter(a => a.stage === AppointmentStage.ACTIVATED).length > 0 && (
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 p-8 rounded-[2.5rem] border border-amber-100 dark:border-amber-800/40 shadow-sm mb-6 animate-in slide-in-from-top-4">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-200 dark:shadow-none"><IconSparkles className="w-6 h-6" /></div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 dark:text-white leading-none mb-1">Activated Partners</h3>
+                                <p className="text-[10px] text-amber-600 font-black uppercase tracking-widest">Premium Referral Rewards Active</p>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Activation Value</p>
+                            <p className="text-2xl font-black text-emerald-600 tabular-nums">
+                                {formatCurrency(filtered.filter(a => a.stage === AppointmentStage.ACTIVATED).length * 1000)}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-4">
+                        {filtered.filter(a => a.stage === AppointmentStage.ACTIVATED).slice(0, 8).map(a => (
+                            <div key={a.id} onClick={() => onEdit(a)} className="flex items-center gap-3 bg-white dark:bg-slate-800 px-4 py-2.5 rounded-2xl border border-amber-100 dark:border-amber-700 shadow-sm cursor-pointer hover:border-amber-400 transition-all active:scale-95 group">
+                                <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-900/40 flex items-center justify-center text-amber-600 font-black text-xs group-hover:bg-amber-100">{a.name.charAt(0)}</div>
+                                <div>
+                                    <p className="text-xs font-black text-slate-800 dark:text-white">{a.name}</p>
+                                    <p className="text-[8px] text-slate-400 font-bold uppercase">{formatDate(a.activatedAt || a.onboardedAt || a.scheduledAt)}</p>
+                                </div>
+                            </div>
+                        ))}
+                        {filtered.filter(a => a.stage === AppointmentStage.ACTIVATED).length > 8 && (
+                            <div className="flex items-center justify-center px-4 text-xs font-black text-amber-600 uppercase tracking-widest">
+                                + {filtered.filter(a => a.stage === AppointmentStage.ACTIVATED).length - 8} more
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

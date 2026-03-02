@@ -133,22 +133,35 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
       );
 
       if (match) {
-        const agent = allUsers.find(u => u.id === match.userId);
         setMatchInfo({
-          agentName: agent?.name || 'Unknown Agent',
+          agentName: allUsers.find(u => u.id === match.userId)?.name || 'Unknown Agent',
           date: match.onboardedAt || match.scheduledAt,
           stage: match.stage,
-          wasSelfOnboard: match.aeName === (agent?.name || ''),
+          wasSelfOnboard: match.aeName === (allUsers.find(u => u.id === match.userId)?.name || ''),
           closerName: match.aeName,
           earnedAmount: match.earnedAmount || 0
         });
+
+        // Auto-populate for activations if fields are empty or just being searched
+        if (formData.type === 'activation') {
+          if (!formData.phone && match.phone) setFormData(prev => ({ ...prev, phone: match.phone }));
+          if (!formData.email && match.email) setFormData(prev => ({ ...prev, email: match.email }));
+          // If we matched by name but phone/email are empty, pull from match
+          if (cleanName.length > 3 && formData.name.toLowerCase().trim() === match.name.toLowerCase().trim()) {
+            setFormData(prev => ({
+              ...prev,
+              phone: prev.phone || match.phone,
+              email: prev.email || match.email
+            }));
+          }
+        }
       } else {
         setMatchInfo(null);
       }
     } else {
       setMatchInfo(null);
     }
-  }, [formData.name, formData.phone, allAppointments, allUsers]);
+  }, [formData.name, formData.phone, allAppointments, allUsers, formData.type]); // Added formData.type to deps
 
   useEffect(() => {
     if (isSelfOnboard && agentName && !isAdmin) {
@@ -242,7 +255,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
             <div className="bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl flex gap-1">
               <button type="button" onClick={() => setFormData({ ...formData, type: 'appointment' })} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${formData.type === 'appointment' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Appointment</button>
               <button type="button" onClick={() => setFormData({ ...formData, type: 'transfer' })} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${formData.type === 'transfer' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none' : 'text-slate-400 hover:text-slate-600'}`}>Transfer</button>
-              <button type="button" onClick={() => setFormData({ ...formData, type: 'activation' })} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${formData.type === 'activation' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200 dark:shadow-none' : 'text-slate-400 hover:text-slate-600'}`}>Activation</button>
+              <button type="button" onClick={() => setFormData({ ...formData, type: 'activation' })} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${formData.type === 'activation' ? 'bg-amber-500 text-white shadow-md shadow-amber-100/50 dark:shadow-none' : 'text-slate-400 hover:text-slate-600'}`}>Activation</button>
             </div>
           </div>
 
@@ -265,7 +278,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
                 <input value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} type="email" className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white shadow-inner" placeholder="client@example.com" />
               </div>
 
-              {matchInfo && (
+              {matchInfo && formData.type === 'activation' && (
                 <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/50 animate-in fade-in slide-in-from-top-2">
                   <div className="flex items-center gap-2 mb-1">
                     <IconCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -352,9 +365,9 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
             )}
             <button
               type="submit"
-              className={`flex-1 py-4 px-6 font-black rounded-2xl shadow-xl transition-all active:scale-95 uppercase tracking-widest text-sm ${formData.type === 'activation'
-                ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200 dark:shadow-none'
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 dark:shadow-none'
+              className={`flex-1 py-4 px-6 font-black rounded-2xl shadow-lg transition-all active:scale-95 uppercase tracking-widest text-sm ${formData.type === 'activation'
+                ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-100/50 dark:shadow-none'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100/50 dark:shadow-none'
                 }`}
             >
               {initialData ? 'Save Record Changes' : (formData.type === 'activation' ? 'Record Activation' : (formData.type === 'transfer' ? (isSelfOnboard ? 'Log Self Onboard' : 'Initiate Live Transfer') : 'Confirm Appointment'))}

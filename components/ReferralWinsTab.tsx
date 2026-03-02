@@ -26,20 +26,20 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
     const isMainAdmin = currentUser?.role === 'admin';
 
     const referralData = useMemo(() => {
-        // Filter appointments that have sent referrals
-        const partners = appointments.filter(a => (a.referralCount || 0) > 0);
+        // Filter appointments that are activated
+        const partners = appointments.filter(a => !!a.activatedAt);
 
         // Match incentives to partners
         return partners.map(p => {
             const partnerIncentives = incentives.filter(i => i.relatedAppointmentId === p.id);
             const totalEarned = partnerIncentives.reduce((sum, i) => sum + i.amountCents, 0);
 
-            // Calculate velocity (days from onboard to first referral)
+            // Calculate velocity (days from onboard to activation)
             let velocityDays: number | null = null;
-            if (p.referralHistory && p.referralHistory.length > 0) {
-                const onboardedAt = new Date(p.onboardedAt || p.scheduledAt).getTime();
-                const firstRefAt = new Date(p.referralHistory[0].date).getTime();
-                velocityDays = Math.max(0, Math.floor((firstRefAt - onboardedAt) / (1000 * 60 * 60 * 24)));
+            if (p.onboardedAt && p.activatedAt) {
+                const onboardedAt = new Date(p.onboardedAt).getTime();
+                const activatedAt = new Date(p.activatedAt).getTime();
+                velocityDays = Math.max(0, Math.floor((activatedAt - onboardedAt) / (1000 * 60 * 60 * 24)));
             }
 
             return {
@@ -47,14 +47,16 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
                 partnerName: p.name,
                 agentId: p.userId,
                 agentName: users.find(u => u.id === p.userId)?.name || 'Unknown',
-                referralCount: p.referralCount || 0,
+                activatedByUserId: p.activatedByUserId,
+                activatedByName: users.find(u => u.id === p.activatedByUserId)?.name || 'System',
+                referralCount: 1,
                 totalEarned,
                 onboardedAt: p.onboardedAt || p.scheduledAt,
-                lastReferralAt: p.lastReferralAt,
+                activatedAt: p.activatedAt,
                 velocityDays,
-                history: p.referralHistory || []
+                onboardType: p.originalOnboardType
             };
-        }).sort((a, b) => new Date(b.lastReferralAt || 0).getTime() - new Date(a.lastReferralAt || 0).getTime());
+        }).sort((a, b) => new Date(b.activatedAt || 0).getTime() - new Date(a.activatedAt || 0).getTime());
     }, [appointments, incentives, users]);
 
     const stats = useMemo(() => {
@@ -107,12 +109,10 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
                                 <div className="text-right">
                                     <p className="text-xs font-black text-emerald-600">{formatCurrency(data.totalEarned)}</p>
                                     <div className="flex flex-col items-end">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Current: {data.agentName}</p>
-                                        {appointments.find(a => a.id === data.partnerId)?.originalUserId && appointments.find(a => a.id === data.partnerId)?.originalUserId !== data.agentId && (
-                                            <p className="text-[8px] font-black text-indigo-500 uppercase tracking-tighter mt-0.5 whitespace-nowrap">
-                                                Onboarded by {users.find(u => u.id === appointments.find(a => a.id === data.partnerId)?.originalUserId)?.name || 'Former Agent'}
-                                            </p>
-                                        )}
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Onboarded By: {data.agentName}</p>
+                                        <p className="text-[8px] font-black text-indigo-500 uppercase tracking-tighter mt-0.5 whitespace-nowrap">
+                                            Activated By: {data.activatedByName}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -138,16 +138,18 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
                                 </div>
                             </div>
 
-                            {/* Recent History Table */}
+                            {/* Activation Context */}
                             <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 overflow-hidden">
-                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">History Breakdown</p>
-                                <div className="space-y-2">
-                                    {data.history.slice().reverse().map((entry, eIdx) => (
-                                        <div key={eIdx} className="flex justify-between items-center text-[10px] font-bold">
-                                            <span className="text-slate-500">{formatDate(entry.date)}</span>
-                                            <span className="text-indigo-600">Sent {entry.count} Referrals</span>
-                                        </div>
-                                    ))}
+                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Activation Metrics</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <span className="text-[10px] text-slate-500 font-bold block">SOURCE</span>
+                                        <span className="text-[10px] font-black uppercase text-slate-900 dark:text-white">{data.onboardType === 'self' ? 'Self Onboard' : 'AE Assisted'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] text-slate-500 font-bold block">STATUS</span>
+                                        <span className="text-[10px] font-black uppercase text-emerald-600">Successfully Activated</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
