@@ -3,7 +3,7 @@
   "name": "Community Tax",
   "icons": [
     {
-      "src": "https://firebasestorage.googleapis.com/v0/b/revitalize-ai-1amnb.firebasestorage.app/o/Logo.png?alt=media&token=504f53e4-357a-493b-9914-fd5224c629b8",
+      "src": "/favicon.png",
       "sizes": "192x192 512x512",
       "type": "image/png"
     }

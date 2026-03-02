@@ -211,7 +211,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
     const blob = new Blob([[headers.join(","), ...rows].join("\n")], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `ChiCayo Tax_Full_Export_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `Community_Tax_Full_Export_${new Date().toISOString().split('T')[0]}.csv`; a.click();
   };
 
   useEffect(() => {
