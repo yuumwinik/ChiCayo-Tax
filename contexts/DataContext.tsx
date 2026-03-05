@@ -120,7 +120,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     userId: a.user_id,
                     scheduledAt: a.scheduled_at,
                     createdAt: a.created_at,
-                    earnedAmount: a.earned_amount,
+                    earnedAmount: Math.min(a.earned_amount || 0, 300), // Safety cap: max $3.00
                     aeName: a.ae_name,
                     referralCount: a.referral_count || 0,
                     lastReferralAt: a.last_referral_at,
@@ -135,7 +135,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             if (cycles) setPayCycles(cycles.map(c => ({ ...c, startDate: c.start_date, endDate: c.end_date })));
             if (logs) setActivityLogs(logs.map(l => ({ ...l, userId: l.user_id, userName: l.user_name, relatedId: l.related_id })));
-            if (incentives) setAllIncentives(incentives.map(i => ({ ...i, userId: i.user_id, amountCents: i.amount_cents, appliedCycleId: i.applied_cycle_id, createdAt: i.created_at, relatedAppointmentId: i.related_appointment_id, ruleId: i.rule_id })));
+            if (incentives) setAllIncentives(incentives.map(i => {
+                const isActivation = (i.label || '').toLowerCase().includes('activation');
+                return {
+                    ...i,
+                    userId: i.user_id,
+                    amountCents: isActivation ? Math.min(i.amount_cents || 0, 1000) : (i.amount_cents || 0), // Cap activation at $10
+                    appliedCycleId: i.applied_cycle_id,
+                    createdAt: i.created_at,
+                    relatedAppointmentId: i.related_appointment_id,
+                    ruleId: i.rule_id
+                };
+            }));
             if (rules) setAllIncentiveRules(rules.map(r => ({ ...r, userId: r.user_id, type: r.type, valueCents: r.value_cents, startTime: r.start_time, endTime: r.end_time, targetCount: r.target_count, currentCount: r.current_count, isActive: r.is_active, createdAt: r.created_at })));
             if (dbReminders) {
                 setReminders(dbReminders.map(r => ({
@@ -478,7 +489,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ae_name: data.aeName,
             earned_amount: (data.stage === AppointmentStage.ONBOARDED || data.stage === AppointmentStage.ACTIVATED) ? baseRate : 0,
             referral_count: data.referralCount || 0,
-            onboarded_at: (data.stage === AppointmentStage.ONBOARDED && !originalAppt?.onboardedAt) ? now.toISOString() : originalAppt?.onboardedAt,
+            onboarded_at: ((data.stage === AppointmentStage.ONBOARDED || data.stage === AppointmentStage.ACTIVATED) && !originalAppt?.onboardedAt) ? now.toISOString() : originalAppt?.onboardedAt,
             activated_at: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? now.toISOString() : originalAppt?.activatedAt,
             original_user_id: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt && originalAppt?.userId !== finalUserId) ? originalAppt?.userId : (originalAppt?.originalUserId || null),
             original_onboard_type: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? (originalAppt?.aeName === (allUsers.find(u => u.id === originalAppt?.userId)?.name) ? 'self' : 'transfer') : (originalAppt?.originalOnboardType || null),

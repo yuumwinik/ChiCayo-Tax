@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Appointment, AppointmentStage, STAGE_COLORS, STAGE_LABELS, AvatarId, User } from '../types';
 import { formatDate, formatCurrency, getRelativeTime } from '../utils/dateUtils';
-import { IconEdit, IconMail, IconPhone, IconTrash, getAvatarIcon, IconCopy, IconCheck, IconTransfer, IconBriefcase, IconX, IconNotes, IconSparkles, IconClock, IconAlertTriangle, IconAlertCircle } from './Icons';
+import { IconEdit, IconMail, IconPhone, IconTrash, getAvatarIcon, IconCopy, IconCheck, IconTransfer, IconBriefcase, IconX, IconNotes, IconSparkles, IconClock, IconAlertTriangle, IconAlertCircle, IconRocket } from './Icons';
 import { ProtocolModal } from './ProtocolModal';
 
 interface AppointmentCardProps {
@@ -81,12 +81,12 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
   return (
     <div
       onClick={() => onView ? onView(appointment) : onEdit(appointment)}
-      className={`bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border transition-all duration-200 group cursor-pointer relative ${isRecentReferral ? 'border-rose-300 dark:border-rose-900 ring-2 ring-rose-500/10' : isOverdue ? 'border-rose-200 dark:border-rose-900/50 bg-rose-50/10' : 'border-slate-100 dark:border-slate-700/50 hover:border-indigo-100 dark:hover:border-indigo-900/50 hover:shadow-md'}`}
+      className={`bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border transition-all duration-200 group cursor-pointer relative ${isRecentReferral ? 'border-emerald-500 dark:border-emerald-700 ring-2 ring-emerald-500/20' : isOverdue ? 'border-rose-200 dark:border-rose-900/50 bg-rose-50/10' : 'border-slate-100 dark:border-slate-700/50 hover:border-indigo-100 dark:hover:border-indigo-900/50 hover:shadow-md'}`}
     >
       {isRecentReferral && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 animate-in slide-in-from-bottom-1">
           <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 text-white rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg shadow-emerald-200 dark:shadow-none whitespace-nowrap">
-            <IconSparkles className="w-3 h-3" /> Partner Activated
+            <IconRocket className="w-3 h-3" /> Partner Activated
           </span>
         </div>
       )}
@@ -259,7 +259,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
                 onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ACTIVATED); }}
                 className="w-full py-1 flex items-center justify-center gap-1.5 rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[8px] uppercase tracking-widest transition-all active:scale-95 border border-emerald-200/50 dark:border-emerald-800/50"
               >
-                <IconSparkles className="w-2.5 h-2.5" /> Log Activation
+                <IconRocket className="w-2.5 h-2.5" /> Log Activation
               </button>
             )}
             <div className="flex justify-between items-center text-[10px] text-slate-400">

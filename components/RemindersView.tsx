@@ -8,10 +8,12 @@ import { formatDate } from '../utils/dateUtils';
 
 interface RemindersViewProps {
     onOpenModal: (reminder?: Reminder) => void;
+    onDeleteReminder: (id: string) => Promise<void>;
+    onSaveAppointment: (data: any) => Promise<void>;
 }
 
-export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal }) => {
-    const { reminders, handleDeleteReminder, handleSaveAppointment } = useData();
+export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal, onDeleteReminder, onSaveAppointment }) => {
+    const { reminders, refreshData } = useData();
     const { user } = useUser();
     const [searchQuery, setSearchQuery] = useState('');
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -31,15 +33,20 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal }) => 
     }, [reminders, searchQuery, user]);
 
     const convertToAppointment = async (reminder: Reminder, stage: AppointmentStage) => {
-        await handleSaveAppointment({
-            name: reminder.name,
-            phone: reminder.phone,
-            email: reminder.email,
-            scheduledAt: reminder.callBackAt,
-            stage: stage,
-            notes: `Converted from Reminder: ${reminder.notes || ''}`
-        });
-        await handleDeleteReminder(reminder.id);
+        try {
+            await onSaveAppointment({
+                name: reminder.name,
+                phone: reminder.phone,
+                email: reminder.email,
+                scheduledAt: reminder.callBackAt,
+                stage: stage,
+                notes: `Converted from Reminder: ${reminder.notes || ''}`
+            });
+            await onDeleteReminder(reminder.id);
+            // Notification is handled by the wrapper
+        } catch (err) {
+            console.error("Conversion error:", err);
+        }
     };
 
     return (
@@ -97,16 +104,16 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal }) => 
 
             {/* Delete Confirmation Inline Modal */}
             {deleteConfirmId && (
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-10 max-w-sm w-full text-center shadow-2xl border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-300">
-                        <div className="w-20 h-20 bg-rose-50 dark:bg-rose-900/30 text-rose-600 rounded-3xl flex items-center justify-center mx-auto mb-8">
-                            <IconTrash className="w-10 h-10" />
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-[2px] animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 max-w-[280px] w-full text-center shadow-2xl border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+                        <div className="w-12 h-12 bg-rose-50 dark:bg-rose-900/30 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <IconTrash className="w-6 h-6" />
                         </div>
-                        <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-3">Delete Reminder?</h3>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-10 leading-relaxed">This action is permanent and will remove the partner from your cloud callback queue.</p>
-                        <div className="grid grid-cols-2 gap-4">
-                            <button onClick={() => setDeleteConfirmId(null)} className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase text-[10px] tracking-widest">Back</button>
-                            <button onClick={async (e) => { e.stopPropagation(); await handleDeleteReminder(deleteConfirmId); setDeleteConfirmId(null); }} className="py-4 bg-rose-600 text-white font-black rounded-2xl hover:bg-rose-700 shadow-xl shadow-rose-200 dark:shadow-none transition-all uppercase text-[10px] tracking-widest">Confirm</button>
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-1">Delete?</h3>
+                        <p className="text-slate-500 dark:text-slate-400 text-[10px] font-bold mb-6 leading-relaxed px-4">Remove this partner from your cloud callback queue?</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button onClick={() => setDeleteConfirmId(null)} className="py-3 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-black rounded-xl hover:bg-slate-100 transition-all uppercase text-[9px] tracking-widest border border-slate-100 dark:border-slate-700">Back</button>
+                            <button onClick={async (e) => { e.stopPropagation(); await onDeleteReminder(deleteConfirmId); setDeleteConfirmId(null); }} className="py-3 bg-rose-600 text-white font-black rounded-xl hover:bg-rose-700 shadow-lg shadow-rose-100 dark:shadow-none transition-all uppercase text-[9px] tracking-widest">Delete</button>
                         </div>
                     </div>
                 </div>

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { TeamMember, DashboardStats, Appointment, PayCycle, AppointmentStage, User, AE_COLORS, ACCOUNT_EXECUTIVES } from '../../types';
-import { IconTrendingUp, IconTransfer, IconBriefcase, IconCheck, IconX, IconCalendar, IconFilter, IconActivity, IconTrophy, IconChartBar, IconSparkles, IconDownload, IconUsers, IconDollarSign, IconChevronLeft, IconChevronRight, IconZap, IconAlertTriangle, IconStar, IconClock } from '../Icons';
+import { TeamMember, DashboardStats, Appointment, PayCycle, AppointmentStage, User, AE_COLORS, ACCOUNT_EXECUTIVES, Incentive } from '../../types';
+import { IconTrendingUp, IconTransfer, IconBriefcase, IconCheck, IconX, IconCalendar, IconFilter, IconActivity, IconTrophy, IconChartBar, IconSparkles, IconDownload, IconUsers, IconDollarSign, IconChevronLeft, IconChevronRight, IconZap, IconAlertTriangle, IconStar, IconClock, IconRocket } from '../Icons';
 import { CustomSelect } from '../CustomSelect';
 import { formatDate, formatCurrency } from '../../utils/dateUtils';
 import { calculatePeakTime, detectAnomalies } from '../../utils/analyticsUtils';
@@ -17,10 +17,10 @@ interface AdminAnalyticsProps {
    selfCommissionRate: number;
    onManualReferral?: (clientId: string, count: number) => void;
    onDeleteReferral?: (clientId: string, entryId: string) => void;
-   incentives?: any[];
+   allIncentives?: Incentive[];
 }
 
-export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, appointments, payCycles, users, referralRate, commissionRate, selfCommissionRate, onManualReferral, onDeleteReferral, incentives = [] }) => {
+export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, appointments, payCycles, users, referralRate, commissionRate, selfCommissionRate, onManualReferral, onDeleteReferral, allIncentives = [] }) => {
    const [selectedCycleId, setSelectedCycleId] = useState<string>('active');
    const [selectedAgentId, setSelectedAgentId] = useState<string>('all');
 
@@ -65,7 +65,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
    }, [appointments, selectedCycleId, selectedAgentId, payCycles]);
 
    const scopedData = useMemo(() => {
-      const onboardedAppts = filteredAppointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
+      const onboardedAppts = filteredAppointments.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
       const totalCount = filteredAppointments.length || 1;
       const onboardedCount = onboardedAppts.length;
       const pending = filteredAppointments.filter(a => a.stage === AppointmentStage.PENDING || a.stage === AppointmentStage.RESCHEDULED).length;
@@ -107,7 +107,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
          }
       });
 
-      const filteredIncentives = (incentives || []).filter(i => {
+      const filteredIncentives = (allIncentives || []).filter(i => {
          if (selectedCycleId === 'lifetime') return true;
          if (selectedCycleId === 'active') {
             const active = payCycles.find(c => {
@@ -117,11 +117,22 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
                return now >= s && now <= e;
             });
             if (!active) return false;
-            return i.applied_cycle_id === active.id;
+            return i.appliedCycleId === active.id;
          }
-         return i.applied_cycle_id === selectedCycleId;
+         return i.appliedCycleId === selectedCycleId;
       });
-      const referralRevenue = filteredIncentives.filter(i => (i.label || '').toLowerCase().includes('activation')).reduce((s, i) => s + (i.amount_cents || 0), 0);
+
+      const referralRevenue = filteredIncentives.filter(i => {
+         const label = (i.label || '').toLowerCase();
+         if (!label.includes('activation')) return false;
+
+         // Verification: ONLY include activation incentives if the partner is ACTIVATED
+         if (i.relatedAppointmentId) {
+            const linked = appointments.find(a => a.id === i.relatedAppointmentId);
+            if (linked && linked.stage !== AppointmentStage.ACTIVATED) return false;
+         }
+         return true;
+      }).reduce((s, i) => s + (i.amountCents || 0), 0);
       const referralCount = activations;
       const selfActivated = filteredAppointments.filter(a => !!a.activatedAt && a.originalOnboardType === 'self').length;
       const aeActivated = filteredAppointments.filter(a => !!a.activatedAt && a.originalOnboardType !== 'self').length;
@@ -143,7 +154,7 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ members, stats, 
          aeActivated,
          synergy
       };
-   }, [filteredAppointments, users, referralRate, commissionRate, selfCommissionRate, incentives, payCycles, selectedCycleId]);
+   }, [filteredAppointments, users, referralRate, commissionRate, selfCommissionRate, allIncentives, payCycles, selectedCycleId]);
 
    const radius = 40;
    const circumference = 2 * Math.PI * radius;

@@ -5,7 +5,7 @@ import {
   IconUsers, IconDollarSign, IconCheck, IconChartBar, IconLayout, IconCycle,
   getAvatarIcon, IconTrash, IconDownload, IconClock,
   IconSparkles, IconTrophy, IconPlus, IconBot, IconX, IconBriefcase,
-  IconTrendingUp, IconTransfer, IconActivity, IconChevronDown, IconChevronLeft, IconChevronRight, IconFilter, IconChartPie, IconAlertCircle, IconTimer, IconStar, IconZap
+  IconTrendingUp, IconTransfer, IconActivity, IconChevronDown, IconChevronLeft, IconChevronRight, IconFilter, IconChartPie, IconAlertCircle, IconTimer, IconStar, IconZap, IconRocket
 } from './Icons';
 
 import { TeamMember, AdminView, PayCycle, DashboardStats, ActivityLog, Appointment, AppointmentStage, User, IncentiveRule, Incentive, ACCOUNT_EXECUTIVES } from '../types';
@@ -190,8 +190,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const agent = allUsers.find(u => u.id === a.userId);
       const isSelf = !a.aeName || a.aeName === agent?.name;
       const apptIncentives = allIncentives.filter(i => i.relatedAppointmentId === a.id);
-      const refPayout = apptIncentives.filter(i => i.label.toLowerCase().includes('ref')).reduce((s, i) => s + i.amountCents, 0);
-      const bonusPayout = apptIncentives.filter(i => !i.label.toLowerCase().includes('ref')).reduce((s, i) => s + i.amountCents, 0);
+      const refPayout = apptIncentives.filter(i => (i.label || '').toLowerCase().includes('ref')).reduce((s, i) => s + (i.amountCents || 0), 0);
+      const bonusPayout = apptIncentives.filter(i => {
+        const label = (i.label || '').toLowerCase();
+        if (label.includes('ref')) return false;
+        // Verification: ONLY include activation incentives if the partner is ACTIVATED
+        if (label.includes('activation') && a.stage !== AppointmentStage.ACTIVATED) return false;
+        return true;
+      }).reduce((s, i) => s + (i.amountCents || 0), 0);
       const stdPayout = a.earnedAmount || (isSelf ? selfCommissionRate : commissionRate);
       return [
         a.id,

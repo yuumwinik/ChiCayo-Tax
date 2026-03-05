@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Appointment, AppointmentStage, EarningWindow, PayCycle, ACCOUNT_EXECUTIVES, Incentive, TeamMember, User } from '../types';
 import { formatCurrency, formatDate } from '../utils/dateUtils';
-import { IconTrendingUp, IconBriefcase, IconTransfer, IconCheck, IconCycle, IconClock, IconChevronDown, IconActivity, IconSparkles, IconTrophy, IconChartBar, IconUsers, IconStar, IconZap } from './Icons';
+import { IconTrendingUp, IconBriefcase, IconTransfer, IconCheck, IconCycle, IconClock, IconChevronDown, IconActivity, IconSparkles, IconTrophy, IconChartBar, IconUsers, IconStar, IconZap, IconRocket } from './Icons';
 import { CustomSelect } from './CustomSelect';
 import { ReferralWinsTab } from './ReferralWinsTab';
 import { calculatePeakTime } from '../utils/analyticsUtils';
@@ -81,21 +81,35 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
          else if (!a.aeName && currentUserName) aeBreakdown[currentUserName]++;
       });
 
-      const totalReferrals = personalOnboarded.reduce((sum, a) => sum + (a.referralCount || 0), 0);
-      const personalReferralRevenue = totalReferrals * referralRate;
+      const totalReferrals = personalOnboarded.filter(a => a.stage === AppointmentStage.ACTIVATED).length;
 
       const personalProdRevenue = personalOnboarded.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
+
+      // Calculate activation revenue from actual incentive records (not legacy referralRate)
+      const activationIncentiveRevenue = allIncentives.filter(i => {
+         if (i.userId !== currentUser.id && i.userId !== 'team') return false;
+         if (scopeType === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
+         if (scopeType === 'history' && i.appliedCycleId !== selectedScopeId) return false;
+         if (!i.label.toLowerCase().includes('activation')) return false;
+         // Verification: ONLY include if the linked partner is still ACTIVATED
+         if (i.relatedAppointmentId) {
+            const linked = allAppointments.find(a => a.id === i.relatedAppointmentId);
+            if (linked && linked.stage !== AppointmentStage.ACTIVATED) return false;
+         }
+         return true;
+      }).reduce((sum, i) => sum + Number(i.amountCents), 0);
 
       const personalBonusRevenue = allIncentives.filter(i => {
          if (i.userId !== currentUser.id && i.userId !== 'team') return false;
          if (scopeType === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
          if (scopeType === 'history' && i.appliedCycleId !== selectedScopeId) return false;
-         // Avoid double counting referrals if we calculate them from card count
+         // Skip activation and ref incentives — they are counted separately
+         if (i.label.toLowerCase().includes('activation')) return false;
          if (i.relatedAppointmentId && i.label.toLowerCase().includes('ref')) return false;
          return true;
       }).reduce((sum, i) => sum + Number(i.amountCents), 0);
 
-      const myTotalRevenue = personalProdRevenue + personalBonusRevenue + personalReferralRevenue;
+      const myTotalRevenue = personalProdRevenue + personalBonusRevenue + activationIncentiveRevenue;
 
       const teamTotalPool = teamOnboarded.reduce((sum, a) => {
          const base = Number(a.earnedAmount) || 0;
@@ -103,6 +117,12 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
       }, 0) + allIncentives.filter(i => {
          if (scopeType === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
          if (scopeType === 'history' && i.appliedCycleId !== selectedScopeId) return false;
+
+         // Verification: ONLY include activation incentives if the linked partner is ACTIVATED
+         if (i.relatedAppointmentId && i.label.toLowerCase().includes('activation')) {
+            const linked = allAppointments.find(a => a.id === i.relatedAppointmentId);
+            if (linked && linked.stage !== AppointmentStage.ACTIVATED) return false;
+         }
          return true;
       }).reduce((sum, i) => sum + Number(i.amountCents), 0);
 
@@ -111,7 +131,7 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
          onboarded: personalOnboarded.length,
          revenue: myTotalRevenue,
          bonusRevenue: personalBonusRevenue,
-         referralRevenue: personalReferralRevenue,
+         referralRevenue: activationIncentiveRevenue,
          referralCount: totalReferrals,
          aeBreakdown,
          selfOnboards: personalOnboarded.filter(a => !a.aeName || a.aeName === currentUserName).length,
@@ -155,7 +175,7 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                <div className="absolute top-0 right-0 p-4 text-slate-50 dark:text-slate-800/40"><IconZap className="w-12 h-12" /></div>
                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Efficiency Ratio</p>
                <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">1:{scopedData.onboarded > 0 ? (scopedData.referralCount / scopedData.onboarded).toFixed(1) : '0'}</div>
-               <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">Referrals Per Onboard</p>
+               <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">Activations Per Onboard</p>
             </div>
             <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
                <div className="absolute top-0 right-0 p-4 text-slate-50 dark:text-slate-800/40 transition-transform group-hover:rotate-12"><IconTrophy className="w-12 h-12" /></div>
@@ -167,14 +187,14 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                <div className="absolute top-0 right-0 p-4 text-slate-50 dark:text-slate-800/40"><IconSparkles className="w-12 h-12" /></div>
                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Payout</p>
                <div className="text-3xl font-black text-indigo-600 tabular-nums">{formatCurrency(scopedData.revenue)}</div>
-               <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">Confirmed + Pending Refs</p>
+               <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">Confirmed + Activation Rewards</p>
             </div>
          </div>
 
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 bg-gradient-to-br from-indigo-600 to-purple-700 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                  <div><h2 className="text-3xl font-black mb-1">Production Stats</h2><p className="text-indigo-100 flex items-center gap-2 text-sm font-medium"><IconSparkles className="w-4 h-4" /> Performance verified by Taxter AI</p></div>
+                  <div><h2 className="text-3xl font-black mb-1">Production Stats</h2><p className="text-indigo-100 flex items-center gap-2 text-sm font-medium"><IconRocket className="w-4 h-4" /> Performance verified by Taxter AI</p></div>
                   <div className="text-right">
                      <div className="text-indigo-200 text-xs font-bold uppercase tracking-widest mb-1 opacity-80">Total Scoped Pay</div>
                      <div className="text-5xl font-black tracking-tight drop-shadow-md">{formatCurrency(scopedData.revenue)}</div>
@@ -216,17 +236,17 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                   <div className="flex-1 text-center md:text-left relative z-10">
                      <div className="flex items-center gap-2 mb-1">
                         <span className="px-2 py-0.5 bg-emerald-600 text-[8px] font-black text-white uppercase tracking-widest rounded-full">Active Bonus</span>
-                        <h3 className="text-2xl font-black text-emerald-900 dark:text-emerald-400 uppercase tracking-tighter">Referral Multiplier</h3>
+                        <h3 className="text-2xl font-black text-emerald-900 dark:text-emerald-400 uppercase tracking-tighter">Activation Rewards</h3>
                      </div>
-                     <p className="text-sm font-bold text-emerald-700 dark:text-emerald-500/80 max-w-md">Your network is your net worth! You've earned an extra <span className="text-emerald-600 dark:text-emerald-300 font-black">{formatCurrency(scopedData.referralRevenue)}</span> from {scopedData.referralCount} referrals sent by onboarded partners.</p>
+                     <p className="text-sm font-bold text-emerald-700 dark:text-emerald-500/80 max-w-md">Your network is your net worth! You've earned an extra <span className="text-emerald-600 dark:text-emerald-300 font-black">{formatCurrency(scopedData.referralRevenue)}</span> from {scopedData.referralCount} activations sent by onboarded partners.</p>
                   </div>
                   <div className="grid grid-cols-2 gap-4 w-full md:w-auto relative z-10">
                      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-emerald-100 dark:border-emerald-900 shadow-sm text-center">
-                        <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Referrals</span>
+                        <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Activations</span>
                         <span className="text-3xl font-black text-emerald-600">{scopedData.referralCount}</span>
                      </div>
                      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-emerald-100 dark:border-emerald-900 shadow-sm text-center">
-                        <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Payout</span>
+                        <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Rewards</span>
                         <span className="text-3xl font-black text-emerald-600">{formatCurrency(scopedData.referralRevenue)}</span>
                      </div>
                   </div>

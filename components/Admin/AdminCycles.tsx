@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { PayCycle, Appointment, User, AppointmentStage, ReferralHistoryEntry } from '../../types';
+import { PayCycle, Appointment, User, AppointmentStage, ReferralHistoryEntry, Incentive } from '../../types';
 import { formatDate, formatCurrency } from '../../utils/dateUtils';
 import * as XLSX from 'xlsx';
 import { IconPlus, IconCycle, IconTrash, IconDollarSign, IconChevronUp, IconChevronDown, IconEdit, IconCheck, IconX, IconClock, IconSparkles, IconLock, IconUsers, IconDownload, IconCalendar, IconBot, IconSearch, IconActivity, IconTransfer, IconBriefcase } from '../Icons';
@@ -23,7 +23,7 @@ interface AdminCyclesProps {
     allUsers?: User[];
     onManualReferral?: (clientId: string, count: number) => void;
     onDeleteReferral?: (clientId: string, entryId: string) => void;
-    allIncentives?: any[];
+    allIncentives?: Incentive[];
 }
 
 export const AdminCycles: React.FC<AdminCyclesProps> = ({
@@ -81,7 +81,7 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
         setIsAiProcessing(true);
         setTimeout(() => { // Artificial "thinking" delay for UI feedback
             try {
-                const onboarded = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
+                const onboarded = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
                 const results: any[] = [];
                 const lines = aiInput.split('\n');
 

@@ -331,6 +331,25 @@ export default function App() {
         }
     };
 
+    const handleSaveReminderWrapper = async (data: Partial<Reminder>) => {
+        try {
+            await handleSaveReminder(data);
+            addToast(`Reminder ${data.id ? 'updated' : 'saved'}`, 'success');
+            setIsReminderModalOpen(false);
+        } catch (err) {
+            addToast(`Error saving reminder: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+        }
+    };
+
+    const handleDeleteReminderWrapper = async (id: string) => {
+        try {
+            await handleDeleteReminder(id);
+            addToast('Reminder removed', 'info');
+        } catch (err) {
+            addToast(`Error deleting reminder: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+        }
+    };
+
     const handleMoveStage = async (id: string, stage: AppointmentStage, isManualSelfOnboard: boolean = false) => {
         console.log(`[DATA] Moving appointment ${id} to stage: ${stage} (manual: ${isManualSelfOnboard})`);
         const appt = allAppointments.find(a => a.id === id); if (!appt) return;
@@ -495,7 +514,7 @@ export default function App() {
                     <main className="flex-1 overflow-y-auto no-scrollbar relative">
                         {loadingAuth ? <div className="h-full flex items-center justify-center"><div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
                             : currentView === 'education' ? <EducationCenter />
-                                : currentView === 'reminders' ? <RemindersView onOpenModal={handleOpenReminderModal} />
+                                : currentView === 'reminders' ? <RemindersView onOpenModal={handleOpenReminderModal} onDeleteReminder={handleDeleteReminderWrapper} onSaveAppointment={handleSaveApptWrapper} />
                                     : currentView === 'profile' ? <ProfileView onReplayTutorial={() => setForceTutorial(true)} totalEarnings={displayEarnings.lifetime} totalOnboarded={allAppointments.filter(a => (isAdmin ? true : a.userId === user?.id) && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED)).length} />
                                         : currentView === 'admin-dashboard' ? <AdminDashboard
                                             members={allUsers.map((u: User) => ({
@@ -646,7 +665,7 @@ export default function App() {
                 <ReminderModal
                     isOpen={isReminderModalOpen}
                     onClose={() => setIsReminderModalOpen(false)}
-                    onSave={handleSaveReminder}
+                    onSave={handleSaveReminderWrapper}
                     editingReminder={editingReminder}
                 />
                 <div className="fixed bottom-1 right-1 text-[10px] text-slate-300 dark:text-slate-700 opacity-50 z-[9999] pointer-events-none font-mono">v1.1.0</div>

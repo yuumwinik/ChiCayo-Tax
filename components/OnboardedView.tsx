@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Appointment, AppointmentStage, AE_COLORS, User, EarningWindow, PayCycle } from '../types';
 import { formatDate, formatCurrency } from '../utils/dateUtils';
-import { IconTrophy, IconTrash, IconCopy, IconCheck, IconArrowRight, IconSparkles, getAvatarIcon, IconPhone, IconMail, IconBriefcase, IconCalendar, IconFilter } from './Icons';
+import { IconTrophy, IconTrash, IconCopy, IconCheck, IconArrowRight, IconSparkles, getAvatarIcon, IconPhone, IconMail, IconBriefcase, IconCalendar, IconFilter, IconRocket } from './Icons';
 import { CustomSelect } from './CustomSelect';
 import { ProtocolModal } from './ProtocolModal';
 import { CardStack } from './CardStack';
@@ -190,7 +190,13 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
         // Fix: Corrected 'appointment' to 'appt' to resolve 'Cannot find name appointment' errors
         const isRecentReferral = appt.lastReferralAt && (Date.now() - new Date(appt.lastReferralAt).getTime() < 48 * 60 * 60 * 1000);
         const relatedIncentives = (incentives || []).filter(i => i.relatedAppointmentId === appt.id || i.related_appointment_id === appt.id);
-        const incentiveTotal = relatedIncentives.reduce((sum, i) => sum + (i.amountCents || i.amount_cents || 0), 0);
+        const incentiveTotal = relatedIncentives.reduce((sum, i) => {
+            const label = (i.label || i.label_text || '').toLowerCase();
+            const isActivation = label.includes('activation');
+            // ONLY include activation incentives if the partner is strictly in the ACTIVATED stage
+            if (isActivation && appt.stage !== AppointmentStage.ACTIVATED) return sum;
+            return sum + (i.amountCents || i.amount_cents || 0);
+        }, 0);
         const totalPayout = (appt.earnedAmount || 0) + ((appt.referralCount || 0) * (referralRate || 0)) + incentiveTotal;
 
         return (
@@ -211,15 +217,15 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                 )}
 
                 <div className="flex justify-between items-start mb-4 relative z-10">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg dark:shadow-none transform group-hover:rotate-12 transition-transform ${appt.stage === AppointmentStage.ACTIVATED ? 'bg-gradient-to-br from-amber-400 to-orange-600 shadow-orange-200' : (isSelfOwned ? 'bg-gradient-to-br from-emerald-400 to-teal-600 shadow-emerald-200' : 'bg-gradient-to-br from-yellow-400 to-orange-500 shadow-orange-200')}`}>
-                        {appt.stage === AppointmentStage.ACTIVATED ? <IconSparkles className="w-6 h-6" /> : (isSelfOwned ? <IconCheck className="w-6 h-6" /> : <IconTrophy className="w-6 h-6" />)}
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg dark:shadow-none transform group-hover:rotate-12 transition-transform ${appt.stage === AppointmentStage.ACTIVATED ? 'bg-gradient-to-br from-emerald-400 to-teal-600 shadow-emerald-200' : (isSelfOwned ? 'bg-gradient-to-br from-emerald-400 to-teal-600 shadow-emerald-200' : 'bg-gradient-to-br from-yellow-400 to-orange-500 shadow-orange-200')}`}>
+                        {appt.stage === AppointmentStage.ACTIVATED ? <IconRocket className="w-6 h-6" /> : (isSelfOwned ? <IconCheck className="w-6 h-6" /> : <IconTrophy className="w-6 h-6" />)}
                     </div>
                     <div className="flex flex-col items-end gap-1">
                         <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-3 py-1 rounded-full text-sm font-bold shadow-sm">
                             {formatCurrency(totalPayout)}
                         </div>
                         {appt.stage === AppointmentStage.ACTIVATED && (
-                            <span className="text-[8px] font-black text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full uppercase tracking-widest border border-amber-100 dark:border-amber-800">Activated</span>
+                            <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full uppercase tracking-widest border border-emerald-100 dark:border-emerald-800">Activated</span>
                         )}
                     </div>
                 </div>
@@ -323,12 +329,12 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                 </div>
 
                 {appt.referralCount > 0 && referralRate > 0 ? (
-                    <div className="px-3 py-2 mb-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/30 rounded-xl flex items-center justify-between">
+                    <div className="px-3 py-2 mb-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 rounded-xl flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <IconSparkles className="w-3.5 h-3.5 text-rose-500" />
-                            <span className="text-[10px] font-black text-rose-700 dark:text-rose-300 uppercase tracking-tighter">Referral Multiplier</span>
+                            <IconRocket className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-tighter">Activation Rewards</span>
                         </div>
-                        <span className="text-xs font-black text-rose-600 dark:text-rose-400">+{appt.referralCount}</span>
+                        <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">+{appt.referralCount}</span>
                     </div>
                 ) : null}
 
@@ -391,7 +397,7 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                         <div className="absolute inset-0 bg-white/10 animate-pulse"></div>
                         <div className="relative z-10">
                             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl shadow-emerald-500/50 animate-spin-slow">
-                                <IconSparkles className="w-12 h-12 text-emerald-600" />
+                                <IconRocket className="w-12 h-12 text-emerald-600" />
                             </div>
                             <h2 className="text-3xl font-extrabold mb-2">CYCLE MASTER!</h2>
                             <p className="text-emerald-100 mb-6 font-medium">21 Onboards this cycle! You are absolutely crushing it.</p>
@@ -407,13 +413,13 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
             )}
 
             {filtered.filter(a => a.stage === AppointmentStage.ACTIVATED).length > 0 && (
-                <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 p-8 rounded-[2.5rem] border border-amber-100 dark:border-amber-800/40 shadow-sm mb-6 animate-in slide-in-from-top-4">
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10 p-8 rounded-[2.5rem] border border-emerald-100 dark:border-emerald-800/40 shadow-sm mb-6 animate-in slide-in-from-top-4">
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-4">
-                            <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-200 dark:shadow-none"><IconSparkles className="w-6 h-6" /></div>
+                            <div className="p-3 bg-emerald-600 text-white rounded-2xl shadow-lg shadow-emerald-200 dark:shadow-none"><IconRocket className="w-6 h-6" /></div>
                             <div>
                                 <h3 className="text-xl font-black text-slate-900 dark:text-white leading-none mb-1">Activated Partners</h3>
-                                <p className="text-[10px] text-amber-600 font-black uppercase tracking-widest">Premium Referral Rewards Active</p>
+                                <p className="text-[10px] text-emerald-600 font-black uppercase tracking-widest">Premium Activation Rewards Active</p>
                             </div>
                         </div>
                         <div className="text-right">
@@ -425,8 +431,8 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                     </div>
                     <div className="flex flex-wrap gap-4">
                         {filtered.filter(a => a.stage === AppointmentStage.ACTIVATED).slice(0, 8).map(a => (
-                            <div key={a.id} onClick={() => onEdit(a)} className="flex items-center gap-3 bg-white dark:bg-slate-800 px-4 py-2.5 rounded-2xl border border-amber-100 dark:border-amber-700 shadow-sm cursor-pointer hover:border-amber-400 transition-all active:scale-95 group">
-                                <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-900/40 flex items-center justify-center text-amber-600 font-black text-xs group-hover:bg-amber-100">{a.name.charAt(0)}</div>
+                            <div key={a.id} onClick={() => onEdit(a)} className="flex items-center gap-3 bg-white dark:bg-slate-800 px-4 py-2.5 rounded-2xl border border-emerald-100 dark:border-emerald-700 shadow-sm cursor-pointer hover:border-emerald-400 transition-all active:scale-95 group">
+                                <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 font-black text-xs group-hover:bg-emerald-100">{a.name.charAt(0)}</div>
                                 <div>
                                     <p className="text-xs font-black text-slate-800 dark:text-white">{a.name}</p>
                                     <p className="text-[8px] text-slate-400 font-bold uppercase">{formatDate(a.activatedAt || a.onboardedAt || a.scheduledAt)}</p>
@@ -434,7 +440,7 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                             </div>
                         ))}
                         {filtered.filter(a => a.stage === AppointmentStage.ACTIVATED).length > 8 && (
-                            <div className="flex items-center justify-center px-4 text-xs font-black text-amber-600 uppercase tracking-widest">
+                            <div className="flex items-center justify-center px-4 text-xs font-black text-emerald-600 uppercase tracking-widest">
                                 + {filtered.filter(a => a.stage === AppointmentStage.ACTIVATED).length - 8} more
                             </div>
                         )}
