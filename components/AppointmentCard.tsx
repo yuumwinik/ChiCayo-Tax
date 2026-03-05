@@ -16,9 +16,10 @@ interface AppointmentCardProps {
   preferredDialer?: string;
   referralRate: number;
   allUsers?: User[];
+  incentives?: any[];
 }
 
-export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, onMoveStage, onEdit, onView, onDelete, agentName, agentAvatar, preferredDialer, referralRate, allUsers }) => {
+export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, onMoveStage, onEdit, onView, onDelete, agentName, agentAvatar, preferredDialer, referralRate, allUsers, incentives = [] }) => {
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [copiedName, setCopiedName] = useState(false);
@@ -55,14 +56,25 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
   };
 
   const isRecentReferral = useMemo(() => {
+    // ONLY show Recent Referral badge IF the card is actually ACTIVATED
+    if (appointment.stage !== AppointmentStage.ACTIVATED) return false;
     if (!appointment.lastReferralAt || !appointment.referralCount || appointment.referralCount === 0) return false;
     const last = new Date(appointment.lastReferralAt).getTime();
     const now = Date.now();
     return (now - last) < (48 * 60 * 60 * 1000);
-  }, [appointment.lastReferralAt]);
+  }, [appointment.lastReferralAt, appointment.stage, appointment.referralCount]);
 
   const urgency = calculateUrgency();
-  const totalPayout = (appointment.earnedAmount || 0) + ((appointment.referralCount || 0) * referralRate);
+  const relatedIncentives = (incentives || []).filter(i => (i.relatedAppointmentId === appointment.id || i.related_appointment_id === appointment.id));
+  const incentiveTotal = relatedIncentives.reduce((sum, i) => {
+    const label = (i.label || i.label_text || '').toLowerCase();
+    const isActivation = label.includes('activation');
+    // ONLY include activation incentives if the partner is strictly in the ACTIVATED stage
+    if (isActivation && appointment.stage !== AppointmentStage.ACTIVATED) return sum;
+    return sum + (i.amountCents || i.amount_cents || 0);
+  }, 0);
+
+  const totalPayout = (appointment.earnedAmount || 0) + ((appointment.referralCount || 0) * (referralRate || 0)) + incentiveTotal;
   const relative = getRelativeTime(appointment.scheduledAt);
   const isOverdue = relative.isPast && (appointment.stage === AppointmentStage.PENDING || appointment.stage === AppointmentStage.RESCHEDULED);
 
@@ -73,8 +85,8 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
     >
       {isRecentReferral && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 animate-in slide-in-from-bottom-1">
-          <span className="flex items-center gap-1.5 px-3 py-1 bg-rose-600 text-white rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg shadow-rose-200 dark:shadow-none whitespace-nowrap">
-            <IconSparkles className="w-3 h-3" /> Recent Referral
+          <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 text-white rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg shadow-emerald-200 dark:shadow-none whitespace-nowrap">
+            <IconSparkles className="w-3 h-3" /> Partner Activated
           </span>
         </div>
       )}
@@ -143,11 +155,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
               </span>
             )}
           </div>
-          {appointment.stage === AppointmentStage.ACTIVATED && (
-            <p className="text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-tighter pl-1">
-              ✓ Activation Reward: Commission Owner Switched to Recorder
-            </p>
-          )}
+          {/* Redundant reward text removed at user request */}
         </div>
       )}
 
@@ -249,9 +257,9 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
             {!appointment.activatedAt && (
               <button
                 onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ACTIVATED); }}
-                className="w-full py-2.5 flex items-center justify-center gap-2 rounded-xl text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 border border-amber-200/50 dark:border-amber-800/50"
+                className="w-full py-1 flex items-center justify-center gap-1.5 rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[8px] uppercase tracking-widest transition-all active:scale-95 border border-emerald-200/50 dark:border-emerald-800/50"
               >
-                <IconSparkles className="w-3.5 h-3.5" /> Log Partner Activation
+                <IconSparkles className="w-2.5 h-2.5" /> Log Activation
               </button>
             )}
             <div className="flex justify-between items-center text-[10px] text-slate-400">

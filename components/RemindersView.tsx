@@ -30,8 +30,8 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal }) => 
         return items.sort((a, b) => new Date(a.callBackAt).getTime() - new Date(b.callBackAt).getTime());
     }, [reminders, searchQuery, user]);
 
-    const convertToAppointment = (reminder: Reminder, stage: AppointmentStage) => {
-        handleSaveAppointment({
+    const convertToAppointment = async (reminder: Reminder, stage: AppointmentStage) => {
+        await handleSaveAppointment({
             name: reminder.name,
             phone: reminder.phone,
             email: reminder.email,
@@ -39,7 +39,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal }) => 
             stage: stage,
             notes: `Converted from Reminder: ${reminder.notes || ''}`
         });
-        handleDeleteReminder(reminder.id);
+        await handleDeleteReminder(reminder.id);
     };
 
     return (
@@ -50,7 +50,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal }) => 
                         <IconClock className="w-10 h-10 text-indigo-600" />
                         Local Reminders
                     </h1>
-                    <p className="text-slate-500 font-medium mt-1">Private callback queue. Stored locally on this device.</p>
+                    <p className="text-slate-500 font-medium mt-1">Private callback queue. Cloud-synced across your devices.</p>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -103,10 +103,10 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal }) => 
                             <IconTrash className="w-8 h-8" />
                         </div>
                         <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-2">Delete Reminder?</h3>
-                        <p className="text-slate-500 text-sm font-medium mb-8">This action cannot be undone. This reminder is only stored locally.</p>
+                        <p className="text-slate-500 text-sm font-medium mb-8">This action cannot be undone. This reminder will be removed from your cloud account.</p>
                         <div className="grid grid-cols-2 gap-3">
                             <button onClick={() => setDeleteConfirmId(null)} className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase text-[10px] tracking-widest">Cancel</button>
-                            <button onClick={() => { handleDeleteReminder(deleteConfirmId); setDeleteConfirmId(null); }} className="py-4 bg-rose-600 text-white font-black rounded-2xl hover:bg-rose-700 shadow-lg shadow-rose-100 dark:shadow-none transition-all uppercase text-[10px] tracking-widest">Confirm</button>
+                            <button onClick={async () => { await handleDeleteReminder(deleteConfirmId); setDeleteConfirmId(null); }} className="py-4 bg-rose-600 text-white font-black rounded-2xl hover:bg-rose-700 shadow-lg shadow-rose-100 dark:shadow-none transition-all uppercase text-[10px] tracking-widest">Confirm</button>
                         </div>
                     </div>
                 </div>
@@ -123,6 +123,18 @@ const ReminderCard = ({ reminder, onEdit, onDelete, onConvert }: {
 }) => {
     const isPastDue = new Date(reminder.callBackAt).getTime() < Date.now();
     const [currentTime, setCurrentTime] = useState(Date.now());
+    const [copiedName, setCopiedName] = useState(false);
+    const [copiedPhone, setCopiedPhone] = useState(false);
+    const [copiedEmail, setCopiedEmail] = useState(false);
+
+    const copyToClipboard = (text: string, type: 'name' | 'phone' | 'email', e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+        if (type === 'name') { setCopiedName(true); setTimeout(() => setCopiedName(false), 2000); }
+        if (type === 'phone') { setCopiedPhone(true); setTimeout(() => setCopiedPhone(false), 2000); }
+        if (type === 'email') { setCopiedEmail(true); setTimeout(() => setCopiedEmail(false), 2000); }
+    };
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(Date.now()), 60000);
@@ -149,7 +161,7 @@ const ReminderCard = ({ reminder, onEdit, onDelete, onConvert }: {
         <div className={`group bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 border-b-4 transition-all hover:translate-y-[-4px] shadow-sm hover:shadow-xl ${isPastDue ? 'border-rose-500 shadow-rose-100 dark:shadow-none' : 'border-indigo-600 shadow-indigo-100 dark:shadow-none'}`}>
             <div className="flex justify-between items-start mb-6">
                 <div className="flex flex-col gap-1">
-                    <h3 className="text-xl font-black text-slate-900 dark:text-white truncate max-w-[150px]">{reminder.name}</h3>
+                    <h3 onClick={(e) => copyToClipboard(reminder.name, 'name', e)} className={`text-xl font-black truncate max-w-[150px] cursor-pointer transition-colors ${copiedName ? 'text-emerald-500' : 'text-slate-900 dark:text-white hover:text-indigo-600'}`}>{reminder.name}</h3>
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
                         <IconCalendar className="w-3.5 h-3.5" />
                         {formatDate(reminder.callBackAt)}
@@ -176,12 +188,12 @@ const ReminderCard = ({ reminder, onEdit, onDelete, onConvert }: {
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-300 rounded-2xl text-xs font-bold">
-                    <IconPhone className="w-3.5 h-3.5 text-slate-400" />
+                <div onClick={(e) => copyToClipboard(reminder.phone, 'phone', e)} className={`flex items-center gap-3 p-3 rounded-2xl text-xs font-bold cursor-pointer transition-colors ${copiedPhone ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+                    <IconPhone className={`w-3.5 h-3.5 ${copiedPhone ? 'text-emerald-500' : 'text-slate-400'}`} />
                     {reminder.phone || 'No Phone'}
                 </div>
-                <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-300 rounded-2xl text-xs font-bold truncate">
-                    <IconMail className="w-3.5 h-3.5 text-slate-400" />
+                <div onClick={(e) => copyToClipboard(reminder.email, 'email', e)} className={`flex items-center gap-3 p-3 rounded-2xl text-xs font-bold truncate cursor-pointer transition-colors ${copiedEmail ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}>
+                    <IconMail className={`w-3.5 h-3.5 ${copiedEmail ? 'text-emerald-500' : 'text-slate-400'}`} />
                     {reminder.email || 'No Email'}
                 </div>
             </div>

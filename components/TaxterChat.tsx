@@ -18,6 +18,7 @@ interface TaxterChatProps {
   commissionRate: number;
   selfCommissionRate: number;
   referralCommissionRate: number;
+  reminders: any[];
 }
 
 interface Message {
@@ -127,7 +128,7 @@ export const RichMessageRenderer = ({ text, onOpenAppointment, onNavigate }: { t
 };
 
 export const TaxterChat: React.FC<TaxterChatProps> = ({
-  user, allAppointments, allEarnings, payCycles, allUsers, onOpenAppointment, onNavigate, activeCycle, commissionRate, selfCommissionRate, referralCommissionRate
+  user, allAppointments, allEarnings, payCycles, allUsers, onOpenAppointment, onNavigate, activeCycle, commissionRate, selfCommissionRate, referralCommissionRate, reminders
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -241,11 +242,15 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
         }
       },
       upcomingEvents,
-      recentPastEvents,
       teamSummary: user.role === 'admin' ? allUsers.filter(u => u.role !== 'admin').map(u => ({
         name: u.name,
         wins: allAppointments.filter(a => a.userId === u.id && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED)).length
-      })) : []
+      })) : [],
+      reminders: (user.role === 'admin' ? reminders : reminders.filter(r => r.userId === user.id)).map(r => ({
+        name: r.name,
+        time: r.callBackAt,
+        notes: r.notes
+      }))
     };
 
     return JSON.stringify(context);
@@ -336,16 +341,17 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
           messages: [
             {
               role: 'system',
-              content: `You are Taxter, the master performance coach for Community Tax.
-                        GOAL: Help agents win by bridging the gap between their LIVE PERFORMANCE and our COMPANY KNOWLEDGE.
-                        STYLE: Professional, encouraging, and highly detailed.
-                        KNOWLEDGE BASE: You have access to the full training manual (scripts, compensation, process, webinars) AND the user's live performance data.
+              content: `You are Taxter, the elite Accounting & Performance Strategist for Community Tax.
+                        GOAL: Provide clear, conversational, and expert-level insights by analyzing the agent's LIVE DATABASE and our COMPANY PLAYBOOK.
+                        TONE: Highly conversational, encouraging, professional but approachable. Use "we" as you are part of their team.
+                        KNOWLEDGE: You know every client name, every dollar earned, every upcoming reminder, and every partner onboarding.
                         RULES:
-                        1. ALWAYS use [[STAT:Label:Value]] for metrics.
-                        2. ALWAYS use [[NAV:View]] for navigation.
-                        3. NEVER mention being in 'Local Mode' or 'Data Only Mode'. You are simply Taxter.
-                        4. Live Context: ${context}
-                        5. Training Manual: ${JSON.stringify(TRAINING_CONTENT)}`
+                        1. ALWAYS use [[STAT:Label:Value]] for data points to make them pop.
+                        2. ALWAYS use [[NAV:View]] or [[OPEN_APPT:ID:Name]] to offer direct helpful actions.
+                        3. NEVER mention system limits or "context data". Just "I've analyzed your cycle..." or "Looking at your calendar...".
+                        4. DATA INSIGHTS: Connect metrics. E.g., if they have many "Activated" partners but low referrals, suggest a follow-up script.
+                        5. LIVE CONTEXT: ${context}
+                        6. TRAINING MANUAL: ${JSON.stringify(TRAINING_CONTENT)}`
             },
             ...messages.slice(-4).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
             { role: 'user', content: prompt }

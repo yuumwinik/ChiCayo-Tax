@@ -260,7 +260,7 @@ export default function App() {
         if (!user || user.role === 'admin') return;
 
         const checkMilestones = () => {
-            const onboarded = allAppointments.filter(a => a.userId === user.id && a.stage === AppointmentStage.ONBOARDED);
+            const onboarded = allAppointments.filter(a => a.userId === user.id && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED));
             const activated = allAppointments.filter(a => a.userId === user.id && (a.stage === AppointmentStage.ACTIVATED || a.stage === AppointmentStage.TRANSFERRED));
             const selfOnboarded = onboarded.filter(a => !a.aeName || a.aeName === user.name);
             const lifetimeCents = displayEarnings.lifetime;
@@ -374,26 +374,33 @@ export default function App() {
     const handleExportCycleLedger = () => {
         if (!activeCycle) return;
         const onboarded = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)).filter(a => {
-            if (a.stage !== AppointmentStage.ONBOARDED) return false;
+            if (a.stage !== AppointmentStage.ONBOARDED && a.stage !== AppointmentStage.ACTIVATED) return false;
             const start = new Date(activeCycle.startDate).getTime();
             const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
-            const onboarded = new Date(a.onboardedAt || a.scheduledAt).getTime();
-            return onboarded >= start && onboarded <= end;
+            const onboardedTime = new Date(a.onboardedAt || a.scheduledAt).getTime();
+            return onboardedTime >= start && onboardedTime <= end;
         });
 
-        const headers = ["ID", "Onboard Date", "Client", "Phone", "Closer", "Type", "Referrals", "Payout", "Notes"];
+        const headers = ["ID", "Onboard/Activated Date", "Client", "Phone", "AE Name", "Type", "Referral Count", "Activation Reward", "Commission", "Total Payout", "Notes"];
         const rows = onboarded.map(a => {
             const isSelf = !a.aeName || a.aeName === user?.name;
-            const payout = (a.earnedAmount || 0) + (a.referralCount || 0) * referralCommissionRate;
+            const baseCommission = (a.earnedAmount || 0);
+            const refBonus = (a.referralCount || 0) * referralCommissionRate;
+            const incEntives = allIncentives.filter(i => i.relatedAppointmentId === a.id);
+            const incTotal = incEntives.reduce((sum, i) => sum + i.amountCents, 0);
+            const total = baseCommission + refBonus + incTotal;
+
             return [
                 a.id,
                 formatDate(a.onboardedAt || a.scheduledAt),
-                a.name,
+                a.name.replace(/,/g, ""),
                 a.phone,
                 a.aeName || 'Self',
-                isSelf ? 'Self' : 'Transfer',
+                a.stage === AppointmentStage.ACTIVATED ? 'Activated Partner' : (isSelf ? 'Self Onboard' : 'AE Transfer'),
                 a.referralCount || 0,
-                (payout / 100).toFixed(2),
+                a.stage === AppointmentStage.ACTIVATED ? (commissionActivation / 100).toFixed(2) : "0.00",
+                (baseCommission / 100).toFixed(2),
+                (total / 100).toFixed(2),
                 (a.notes || "").replace(/,/g, ";")
             ].join(",");
         });
@@ -450,17 +457,6 @@ export default function App() {
                 <TutorialOverlay isOpen={!user.hasSeenTutorial || forceTutorial} userRole={user.role} onComplete={async () => { setUser({ ...user, hasSeenTutorial: true }); await supabase.from('users').update({ has_seen_tutorial: true }).eq('id', user.id); setForceTutorial(false); }} />
                 <Sidebar currentView={currentView} onChangeView={v => { setCurrentView(v); sessionStorage.setItem(KEYS.LAST_VIEW, v); }} isOpen={isSidebarOpen} onCloseMobile={() => setIsSidebarOpen(false)} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onLogout={() => setUser(null)} userRole={user.role} userName={user.name} userAvatar={user.avatarId} isTickerVisible={isTickerVisible} onToggleTicker={() => setIsTickerVisible(!isTickerVisible)} />
                 <div className="flex-1 flex flex-col min-w-0" onDragOver={e => e.preventDefault()}>
-                    {isTickerVisible && (
-                        <GlobalWinTicker
-                            visible={isTickerVisible}
-                            onToggle={() => setIsTickerVisible(!isTickerVisible)}
-                            appointments={allAppointments}
-                            activeCycle={activeCycle}
-                            users={allUsers}
-                            onViewAppt={a => handleOpenBusinessCard(allAppointments.find(x => x.id === a)!)}
-                            onNavigate={setCurrentView}
-                        />
-                    )}
                     <header className="h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 sticky top-0 z-40">
                         <div className="flex items-center gap-4">
                             <button onClick={() => setIsSidebarOpen(true)} className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl md:hidden hover:scale-105 active:scale-95 transition-all"><IconMenu className="w-5 h-5" /></button>
@@ -500,12 +496,12 @@ export default function App() {
                         {loadingAuth ? <div className="h-full flex items-center justify-center"><div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
                             : currentView === 'education' ? <EducationCenter />
                                 : currentView === 'reminders' ? <RemindersView onOpenModal={handleOpenReminderModal} />
-                                    : currentView === 'profile' ? <ProfileView onReplayTutorial={() => setForceTutorial(true)} totalEarnings={displayEarnings.lifetime} totalOnboarded={allAppointments.filter(a => (isAdmin ? true : a.userId === user?.id) && a.stage === AppointmentStage.ONBOARDED).length} />
+                                    : currentView === 'profile' ? <ProfileView onReplayTutorial={() => setForceTutorial(true)} totalEarnings={displayEarnings.lifetime} totalOnboarded={allAppointments.filter(a => (isAdmin ? true : a.userId === user?.id) && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED)).length} />
                                         : currentView === 'admin-dashboard' ? <AdminDashboard
                                             members={allUsers.map((u: User) => ({
                                                 ...u,
                                                 status: 'active',
-                                                onboardedCount: allAppointments.filter(a => a.userId === u.id && a.stage === AppointmentStage.ONBOARDED).length,
+                                                onboardedCount: allAppointments.filter(a => a.userId === u.id && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED)).length,
                                                 totalEarnings: 0,
                                                 lastActive: u.createdAt || new Date().toISOString()
                                             }))}
@@ -548,7 +544,11 @@ export default function App() {
                                                                         {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, ...((user?.showFailedSection ?? true) ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
                                                                             const searchLower = searchQuery.toLowerCase();
                                                                             const items = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)).filter(a => {
-                                                                                if (a.stage !== stage) return false;
+                                                                                if (stage === AppointmentStage.ONBOARDED) {
+                                                                                    if (a.stage !== AppointmentStage.ONBOARDED && a.stage !== AppointmentStage.ACTIVATED) return false;
+                                                                                } else {
+                                                                                    if (a.stage !== stage) return false;
+                                                                                }
                                                                                 if (stage === AppointmentStage.ONBOARDED && activeCycle) {
                                                                                     const start = new Date(activeCycle.startDate).getTime();
                                                                                     const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
@@ -576,7 +576,7 @@ export default function App() {
                                                                                 <div key={stage} className="flex flex-col gap-4 animate-in fade-in" onDragOver={e => e.preventDefault()} onDrop={() => draggedId && handleMoveStage(draggedId, stage)}>
                                                                                     <div className="flex justify-between px-1"><h3 className="font-bold text-slate-500 uppercase text-[10px] tracking-widest">{stage === AppointmentStage.ONBOARDED ? 'Active Cycle Wins' : STAGE_LABELS[stage]}</h3><span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-bold">{sortedItems.length}</span></div>
                                                                                     {stage === AppointmentStage.TRANSFERRED && (<div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-1 animate-pulse flex items-center gap-2"><div className="p-1 bg-indigo-600 text-white rounded-lg"><IconTransfer className="w-3.5 h-3.5" /></div><span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">LIVE WAITING ONBOARD</span></div>)}
-                                                                                    <CardStack<Appointment> items={sortedItems} renderItem={appt => (<div onDragStart={() => setDraggedId(appt.id)} onDragEnd={() => { setDraggedId(null); setIsOverDeleteZone(false); }} draggable><AppointmentCard appointment={appt} onMoveStage={handleMoveStage} onEdit={(a, res) => { setEditingAppt(a); setIsRescheduling(!!res); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, sortedItems)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} agentName={isAdmin ? allUsers.find(u => u.id === appt.userId)?.name : undefined} preferredDialer={user.preferredDialer} referralRate={referralCommissionRate} allUsers={allUsers} /></div>)} />
+                                                                                    <CardStack<Appointment> items={sortedItems} renderItem={appt => (<div onDragStart={() => setDraggedId(appt.id)} onDragEnd={() => { setDraggedId(null); setIsOverDeleteZone(false); }} draggable><AppointmentCard appointment={appt} onMoveStage={handleMoveStage} onEdit={(a, res) => { setEditingAppt(a); setIsRescheduling(!!res); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, sortedItems)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} agentName={isAdmin ? allUsers.find(u => u.id === appt.userId)?.name : undefined} preferredDialer={user.preferredDialer} referralRate={referralCommissionRate} allUsers={allUsers} incentives={allIncentives} /></div>)} />
                                                                                 </div>
                                                                             );
                                                                         })}
@@ -614,12 +614,12 @@ export default function App() {
                 <AESelectionModal isOpen={isAEModalOpen} onClose={() => setIsAEModalOpen(false)} agentName={user?.name} onConfirm={ae => { if (pendingMove) { handleMoveStage(pendingMove.id, pendingMove.stage, false).then(() => { supabase.from('appointments').update({ ae_name: ae }).eq('id', pendingMove.id).then(() => { setPendingMove(null); refreshData(); }); }); } }} />
                 <EarningsPanel isOpen={isEarningsPanelOpen} onClose={() => setIsEarningsPanelOpen(false)} onViewAll={() => { setIsEarningsPanelOpen(false); setCurrentView('earnings-full'); }} currentWindow={displayEarnings.current} history={displayEarnings.history} lifetimeEarnings={displayEarnings.lifetime} teamEarnings={isAdmin ? displayEarnings.lifetime : undefined} teamCurrentPool={isAdmin ? teamCurrentCycleTotal : undefined} isTeamView={isAdmin} referralRate={referralCommissionRate} allAppointments={allAppointments} />
                 <ErrorBoundary FallbackComponent={ErrorFallback}>
-                    <TaxterChat user={user} allAppointments={allAppointments} allEarnings={displayEarnings.history} payCycles={payCycles} allUsers={allUsers} onNavigate={setCurrentView} activeCycle={activeCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralCommissionRate={referralCommissionRate} />
+                    <TaxterChat user={user} allAppointments={allAppointments} allEarnings={displayEarnings.history} payCycles={payCycles} allUsers={allUsers} onNavigate={setCurrentView} activeCycle={activeCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralCommissionRate={referralCommissionRate} reminders={reminders} />
                 </ErrorBoundary>
 
-                <div className="fixed top-20 right-6 z-[200] flex flex-col gap-3 pointer-events-none">
+                <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] flex flex-col-reverse gap-3 pointer-events-none items-center">
                     {toasts.map(t => (
-                        <div key={t.id} className={`pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-right-10 border backdrop-blur-md transition-all ${t.type === 'success' ? 'bg-emerald-500/90 border-emerald-400 text-white' : t.type === 'error' ? 'bg-rose-500/90 border-rose-400 text-white' : 'bg-slate-900/90 border-slate-700 text-white'}`}>
+                        <div key={t.id} className={`pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300 border backdrop-blur-md transition-all ${t.type === 'success' ? 'bg-emerald-500 text-white border-emerald-400' : t.type === 'error' ? 'bg-rose-500 text-white border-rose-400' : 'bg-slate-900 text-white border-slate-700'}`}>
                             {t.type === 'success' ? <IconCheck className="w-5 h-5" /> : t.type === 'error' ? <IconAlertCircle className="w-5 h-5" /> : <IconActivity className="w-5 h-5" />}
                             <span className="text-sm font-black whitespace-nowrap">{t.message}</span>
                         </div>

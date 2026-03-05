@@ -25,6 +25,7 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
 }) => {
    const [selectedScopeId, setSelectedScopeId] = useState<string>('active');
    const [expandedCycles, setExpandedCycles] = useState<Set<string>>(new Set());
+   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
    const toggleCycle = (id: string) => {
       const next = new Set(expandedCycles);
@@ -69,8 +70,8 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
          teamFiltered = teamFiltered.filter(a => { const d = new Date(a.onboardedAt || a.scheduledAt).getTime(); return d >= s && d <= e; });
       }
 
-      const personalOnboarded = personalFiltered.filter(a => a.stage === AppointmentStage.ONBOARDED);
-      const teamOnboarded = teamFiltered.filter(a => a.stage === AppointmentStage.ONBOARDED);
+      const personalOnboarded = personalFiltered.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
+      const teamOnboarded = teamFiltered.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
 
       const aeBreakdown: Record<string, number> = { 'Joshua': 0, 'Jorge': 0, 'Andrew': 0 };
       if (currentUserName) aeBreakdown[currentUserName] = 0;
@@ -240,91 +241,20 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
             <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl"><IconClock className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Peak Time</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">N/A</div><div className="text-[10px] text-slate-400 font-medium mt-1">Optimization analysis</div></div>
          </div>
 
-         <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center justify-between mb-8"><div><h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3"><IconBriefcase className="w-6 h-6 text-indigo-600" /> AE Closing Breakdown</h3><p className="text-xs text-slate-500 font-medium mt-1">Who is sealing the deal on your leads?</p></div><div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-4 py-2 rounded-2xl font-black text-xs uppercase tracking-widest">{scopedData.onboarded} Total Wins</div></div>
+         <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-6 text-slate-50 dark:text-slate-800/20"><IconTrendingUp className="w-16 h-16" /></div>
+            <div className="flex items-center justify-between mb-8"><div><h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3"><IconBriefcase className="w-6 h-6 text-indigo-600" /> AE Closing Breakdown</h3><p className="text-xs text-slate-500 font-medium mt-1">Who is sealing the deal on your leads?</p></div><div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-4 py-2 rounded-2xl font-black text-xs uppercase tracking-widest leading-none">{scopedData.onboarded} Wins</div></div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
                {Object.entries(scopedData.aeBreakdown).map(([name, countValue]) => {
                   const count = countValue as number;
                   const percent = scopedData.onboarded > 0 ? Math.round((count / scopedData.onboarded) * 100) : 0; const isSelf = name === currentUserName;
-                  return (<div key={name} className="space-y-2"><div className="flex justify-between items-end"><div className="flex items-center gap-2"><span className={`font-bold text-sm ${isSelf ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300'}`}>{name} {isSelf && '(You)'}</span></div><div className="text-right"><span className="text-lg font-black text-slate-900 dark:text-white">{count}</span><span className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Wins</span></div></div><div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-50 dark:border-slate-800/50"><div className={`h-full ${isSelf ? 'bg-indigo-600' : 'bg-slate-400'} transition-all duration-1000`} style={{ width: `${percent}%` }} /></div><div className="flex justify-between"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Support Level</span><span className="text-[10px] font-black text-slate-500">{percent}%</span></div></div>);
+                  return (<div key={name} className="space-y-2"><div className="flex justify-between items-end"><div className="flex items-center gap-2"><span className={`font-bold text-sm ${isSelf ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300'}`}>{name} {isSelf && '(You)'}</span></div><div className="text-right"><span className="text-lg font-black text-slate-900 dark:text-white leading-none">{count}</span><span className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Wins</span></div></div><div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-50 dark:border-slate-800/50"><div className={`h-full ${isSelf ? 'bg-indigo-600' : 'bg-slate-400'} transition-all duration-1000`} style={{ width: `${percent}%` }} /></div><div className="flex justify-between"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Support Level</span><span className="text-[10px] font-black text-slate-500">{percent}%</span></div></div>);
                })}
             </div>
          </div>
 
          <div className="space-y-4">
-            <div className="flex items-center justify-between px-2"><h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3"><IconCycle className="w-6 h-6 text-indigo-500" /> Cycle Payout History</h3></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-               {historicalWindows.map(win => {
-                  const isOpen = expandedCycles.has(win.id);
-                  return (
-                     <div key={win.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-[2.5rem] overflow-hidden shadow-sm transition-all hover:shadow-md h-fit">
-                        <button onClick={() => toggleCycle(win.id)} className="w-full p-6 flex items-center justify-between text-left transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-700/20">
-                           <div className="flex items-center gap-5">
-                              <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded-2xl flex flex-col items-center justify-center font-black">
-                                 <span className="text-xl leading-none">{win.onboardedCount}</span>
-                                 <span className="text-[8px] uppercase tracking-tighter">Wins</span>
-                              </div>
-                              <div>
-                                 <div className="text-sm font-black text-slate-900 dark:text-white mb-0.5">{formatDate(win.startDate)} — {formatDate(win.endDate)}</div>
-                                 <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Total: {formatCurrency(win.totalCents)}</div>
-                              </div>
-                           </div>
-                           <div className={`p-2 rounded-full bg-slate-50 dark:bg-slate-900 text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
-                              <IconChevronDown className="w-5 h-5" />
-                           </div>
-                        </button>
-
-                        {isOpen && (
-                           <div className="px-6 pb-6 animate-in slide-in-from-top-4 duration-300">
-                              <div className="space-y-4 border-t border-slate-100 dark:border-slate-700 pt-6">
-                                 {win.incentives && win.incentives.length > 0 && (
-                                    <div className="space-y-2">
-                                       <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bonuses Earned</h5>
-                                       {win.incentives.map(i => (
-                                          <div key={i.id} className="flex justify-between items-center bg-amber-50/50 dark:bg-amber-900/10 p-3 rounded-xl border border-amber-100 dark:border-amber-900/30">
-                                             <div className="flex items-center gap-2">
-                                                <IconTrophy className="w-3.5 h-3.5 text-amber-600" />
-                                                <span className="text-xs font-bold text-amber-900 dark:text-amber-400">{i.label}</span>
-                                             </div>
-                                             <span className="text-xs font-black text-amber-600">+{formatCurrency(i.amountCents)}</span>
-                                          </div>
-                                       ))}
-                                    </div>
-                                 )}
-                                 <div className="space-y-2">
-                                    <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Onboarded Leads</h5>
-                                    <div className="max-h-[150px] overflow-y-auto no-scrollbar space-y-1">
-                                       {appointments.filter(a => {
-                                          const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
-                                          const winStart = new Date(win.startDate).getTime();
-                                          const winEnd = new Date(win.endDate).setHours(23, 59, 59, 999);
-                                          return a.stage === AppointmentStage.ONBOARDED && d >= winStart && d <= winEnd;
-                                       }).map(a => (
-                                          <button
-                                             key={a.id}
-                                             onClick={() => onViewAppt(a)}
-                                             className="w-full flex justify-between items-center text-xs p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/30 text-left transition-colors"
-                                          >
-                                             <div>
-                                                <span className="font-bold text-slate-900 dark:text-white block">{a.name}</span>
-                                                {a.referralCount ? <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest">{a.referralCount} Referrals included</span> : null}
-                                             </div>
-                                             <span className="font-bold text-emerald-600">+{formatCurrency((a.earnedAmount || 0) + (a.referralCount || 0) * referralRate)}</span>
-                                          </button>
-                                       ))}
-                                    </div>
-                                 </div>
-                              </div>
-                           </div>
-                        )}
-                     </div>
-                  );
-               })}
-            </div>
-         </div>
-
-         <div className="space-y-4">
-            <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3"><IconStar className="w-6 h-6 text-rose-500" /> My Referral Insights</h3>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3"><IconStar className="w-6 h-6 text-emerald-500" /> My Referral Insights</h3>
             <ReferralWinsTab
                appointments={appointments}
                incentives={allIncentives}
@@ -334,6 +264,93 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                currentUser={currentUser}
                onViewAppt={onViewAppt}
             />
+         </div>
+
+         {/* Payout History Moved to Bottom & Collapsible */}
+         <div className="space-y-4 border-t-4 border-slate-100 dark:border-slate-800 pt-10">
+            <button
+               onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+               className="flex items-center justify-between w-full px-4 group"
+            >
+               <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-4">
+                  <IconCycle className="w-8 h-8 text-indigo-500" />
+                  Cycle Payout History
+               </h3>
+               <div className={`p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 transition-all group-hover:bg-indigo-600 group-hover:text-white ${isHistoryOpen ? 'rotate-180' : ''}`}>
+                  <IconChevronDown className="w-6 h-6" />
+               </div>
+            </button>
+
+            {isHistoryOpen && (
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-top-4 duration-500">
+                  {historicalWindows.map(win => {
+                     const isOpen = expandedCycles.has(win.id);
+                     return (
+                        <div key={win.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-[2.5rem] overflow-hidden shadow-sm transition-all hover:shadow-md h-fit">
+                           <button onClick={() => toggleCycle(win.id)} className="w-full p-6 flex items-center justify-between text-left transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-700/20">
+                              <div className="flex items-center gap-5">
+                                 <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded-2xl flex flex-col items-center justify-center font-black">
+                                    <span className="text-xl leading-none">{win.onboardedCount}</span>
+                                    <span className="text-[8px] uppercase tracking-tighter">Wins</span>
+                                 </div>
+                                 <div className="shrink-0">
+                                    <div className="text-sm font-black text-slate-900 dark:text-white mb-0.5">{formatDate(win.startDate)} — {formatDate(win.endDate)}</div>
+                                    <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Total: {formatCurrency(win.totalCents)}</div>
+                                 </div>
+                              </div>
+                              <div className={`p-2 rounded-full bg-slate-50 dark:bg-slate-900 text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
+                                 <IconChevronDown className="w-5 h-5" />
+                              </div>
+                           </button>
+
+                           {isOpen && (
+                              <div className="px-6 pb-6 animate-in slide-in-from-top-4 duration-300">
+                                 <div className="space-y-4 border-t border-slate-100 dark:border-slate-700 pt-6">
+                                    {win.incentives && win.incentives.length > 0 && (
+                                       <div className="space-y-2">
+                                          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bonuses Earned</h5>
+                                          {win.incentives.map(i => (
+                                             <div key={i.id} className="flex justify-between items-center bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                                                <div className="flex items-center gap-2">
+                                                   <IconSparkles className="w-3.5 h-3.5 text-emerald-600" />
+                                                   <span className="text-xs font-bold text-emerald-900 dark:text-emerald-400 truncate max-w-[150px]">{i.label}</span>
+                                                </div>
+                                                <span className="text-xs font-black text-emerald-600 shrink-0">+{formatCurrency(i.amountCents)}</span>
+                                             </div>
+                                          ))}
+                                       </div>
+                                    )}
+                                    <div className="space-y-2">
+                                       <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmed Deals</h5>
+                                       <div className="max-h-[150px] overflow-y-auto no-scrollbar space-y-1">
+                                          {appointments.filter(a => {
+                                             const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
+                                             const winStart = new Date(win.startDate).getTime();
+                                             const winEnd = new Date(win.endDate).setHours(23, 59, 59, 999);
+                                             return (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED) && d >= winStart && d <= winEnd;
+                                          }).map(a => (
+                                             <button
+                                                key={a.id}
+                                                onClick={() => onViewAppt(a)}
+                                                className="w-full flex justify-between items-center text-xs p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/30 text-left transition-colors"
+                                             >
+                                                <div className="truncate pr-4">
+                                                   <span className="font-bold text-slate-900 dark:text-white block truncate">{a.name}</span>
+                                                   {a.referralCount ? <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Includes Referrals</span> : null}
+                                                </div>
+                                                <span className="font-bold text-emerald-600 shrink-0">+{formatCurrency((a.earnedAmount || 0) + (a.referralCount || 0) * referralRate)}</span>
+                                             </button>
+                                          ))}
+                                       </div>
+                                    </div>
+                                 </div>
+                              </div>
+                           )}
+                        </div>
+                     );
+                  })}
+               </div>
+            )}
          </div>
       </div >
    );

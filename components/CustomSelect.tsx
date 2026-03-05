@@ -15,22 +15,24 @@ interface CustomSelectProps {
   editable?: boolean; // If true, acts as an input with datalist behavior
   onBlur?: () => void;
   className?: string;
+  dropdownDirection?: 'up' | 'down';
 }
 
-export const CustomSelect: React.FC<CustomSelectProps> = ({ 
-  options, 
-  value, 
-  onChange, 
-  placeholder = "Select...", 
+export const CustomSelect: React.FC<CustomSelectProps> = ({
+  options,
+  value,
+  onChange,
+  placeholder = "Select...",
   editable = false,
   onBlur,
-  className = ""
+  className = "",
+  dropdownDirection = 'down'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Normalize options to object format
-  const normalizedOptions = options.map(opt => 
+  const normalizedOptions = options.map(opt =>
     typeof opt === 'string' ? { value: opt, label: opt } : opt
   );
 
@@ -63,7 +65,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
             placeholder={placeholder}
             className="w-full px-4 py-3 pr-10 rounded-xl bg-slate-50 dark:bg-slate-900 border border-transparent focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 text-slate-900 dark:text-white outline-none transition-all shadow-sm text-center font-medium cursor-text"
           />
-          <div 
+          <div
             className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-slate-400 hover:text-indigo-500 transition-colors"
             onClick={() => setIsOpen(!isOpen)}
           >
@@ -85,7 +87,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full min-w-[80px] bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top">
+        <div className={`absolute z-50 w-full min-w-[80px] bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 duration-100 
+          ${dropdownDirection === 'up' ? 'bottom-full mb-1 origin-bottom' : 'mt-1 origin-top'}`}>
           <div className="max-h-60 overflow-y-auto p-1 no-scrollbar space-y-0.5">
             {normalizedOptions.map((opt) => (
               <button
@@ -93,8 +96,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                 type="button"
                 onClick={() => handleSelect(opt.value)}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between
-                  ${value === opt.value 
-                    ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' 
+                  ${value === opt.value
+                    ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'
                     : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white'
                   }`}
               >
@@ -103,7 +106,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
               </button>
             ))}
             {normalizedOptions.length === 0 && (
-                <div className="px-3 py-2 text-xs text-slate-400 text-center">No options</div>
+              <div className="px-3 py-2 text-xs text-slate-400 text-center">No options</div>
             )}
           </div>
         </div>

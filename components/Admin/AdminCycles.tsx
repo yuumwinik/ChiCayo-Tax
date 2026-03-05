@@ -28,7 +28,7 @@ interface AdminCyclesProps {
 
 export const AdminCycles: React.FC<AdminCyclesProps> = ({
     cycles, onAddCycle, onEditCycle, onDeleteCycle,
-    commissionRate = 200, selfCommissionRate = 300, referralRate = 200, activationRate = 1000,
+    commissionRate = 200, selfCommissionRate = 300, referralRate = 0, activationRate = 1000,
     onUpdateMasterCommissions,
     onImportReferrals,
     appointments = [],
@@ -131,7 +131,7 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
             const sheetName = workbook.SheetNames[0];
             const rows: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-            const onboarded = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
+            const onboarded = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
             const results: any[] = [];
 
             rows.forEach(row => {
@@ -183,7 +183,7 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
     };
 
     const onboardedList = useMemo(() => {
-        let list = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED);
+        let list = appointments.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
         if (lookupQuery) {
             list = list.filter(a => a.name.toLowerCase().includes(lookupQuery.toLowerCase()) || a.phone.includes(lookupQuery));
         }

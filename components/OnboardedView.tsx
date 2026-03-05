@@ -189,7 +189,9 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
 
         // Fix: Corrected 'appointment' to 'appt' to resolve 'Cannot find name appointment' errors
         const isRecentReferral = appt.lastReferralAt && (Date.now() - new Date(appt.lastReferralAt).getTime() < 48 * 60 * 60 * 1000);
-        const totalPayout = (appt.earnedAmount || 0) + ((appt.referralCount || 0) * referralRate);
+        const relatedIncentives = (incentives || []).filter(i => i.relatedAppointmentId === appt.id || i.related_appointment_id === appt.id);
+        const incentiveTotal = relatedIncentives.reduce((sum, i) => sum + (i.amountCents || i.amount_cents || 0), 0);
+        const totalPayout = (appt.earnedAmount || 0) + ((appt.referralCount || 0) * (referralRate || 0)) + incentiveTotal;
 
         return (
             <div
@@ -320,7 +322,7 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
                     </div>
                 </div>
 
-                {appt.referralCount ? (
+                {appt.referralCount > 0 && referralRate > 0 ? (
                     <div className="px-3 py-2 mb-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/30 rounded-xl flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <IconSparkles className="w-3.5 h-3.5 text-rose-500" />

@@ -69,8 +69,8 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 z-[500] flex items-end md:items-center justify-center p-0 md:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="relative bg-white dark:bg-slate-900 w-full h-[90vh] md:h-auto md:max-h-[85vh] md:max-w-4xl overflow-hidden flex flex-col md:flex-row border-0 md:border border-white/20 md:rounded-[2.5rem] shadow-2xl animate-in zoom-in-95 duration-300">
+        <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center p-0 md:p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="relative z-[1010] bg-white dark:bg-slate-900 w-full h-[90vh] md:h-auto md:max-h-[85vh] md:max-w-4xl overflow-hidden flex flex-col md:flex-row border-0 md:border border-white/20 md:rounded-[2.5rem] shadow-2xl animate-in zoom-in-95 duration-300">
                 <button onClick={onClose} className="absolute top-5 right-5 z-40 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-50 dark:bg-slate-800 rounded-full transition-colors border border-slate-100 dark:border-slate-700 shadow-sm"><IconX className="w-5 h-5" /></button>
 
                 <div className={`w-full md:w-5/12 p-8 flex flex-col items-center text-center bg-slate-50 dark:bg-slate-800/30 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 transition-colors duration-500 ${isOnboarded ? 'bg-emerald-50/30 dark:bg-emerald-900/10' : ''}`}>

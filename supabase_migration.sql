@@ -155,15 +155,15 @@ ALTER TABLE public.activity_logs ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.settings (
     id TEXT PRIMARY KEY DEFAULT 'global',
-    commission_standard INTEGER DEFAULT 20000,
-    commission_self INTEGER DEFAULT 30000,
-    commission_referral INTEGER DEFAULT 20000,
-    commission_activation INTEGER DEFAULT 100000,
+    commission_standard INTEGER DEFAULT 200,
+    commission_self INTEGER DEFAULT 300,
+    commission_referral INTEGER DEFAULT 0,
+    commission_activation INTEGER DEFAULT 1000,
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS commission_activation INTEGER DEFAULT 100000;
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS commission_referral INTEGER DEFAULT 20000;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS commission_activation INTEGER DEFAULT 1000;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS commission_referral INTEGER DEFAULT 0;
 
 -- Seed default settings row if not already present
 INSERT INTO public.settings (id, commission_standard, commission_self, commission_referral, commission_activation)

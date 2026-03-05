@@ -238,8 +238,8 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-lg md:max-w-4xl animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90dvh] overflow-hidden border border-white/10">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md overflow-y-auto">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-lg md:max-w-4xl animate-in fade-in zoom-in duration-300 flex flex-col max-h-[90dvh] overflow-hidden border border-white/10 relative z-[1010]">
         <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-600 text-white rounded-lg">
@@ -345,7 +345,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
                 {initialData && !isRescheduling && (
                   <div className="space-y-2">
                     <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Update Stage</label>
-                    <CustomSelect options={stageOptions} value={formData.stage} onChange={(val) => setFormData(prev => ({ ...prev, stage: val as AppointmentStage }))} />
+                    <CustomSelect options={stageOptions} value={formData.stage} onChange={(val) => setFormData(prev => ({ ...prev, stage: val as AppointmentStage }))} dropdownDirection="up" />
                   </div>
                 )}
               </div>
