@@ -43,12 +43,12 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal }) => 
     };
 
     return (
-        <div className="p-6 md:p-8 space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto">
+        <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                     <h1 className="text-4xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-3">
                         <IconClock className="w-10 h-10 text-indigo-600" />
-                        Local Reminders
+                        Partner Reminders
                     </h1>
                     <p className="text-slate-500 font-medium mt-1">Private callback queue. Cloud-synced across your devices.</p>
                 </div>
@@ -97,16 +97,16 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal }) => 
 
             {/* Delete Confirmation Inline Modal */}
             {deleteConfirmId && (
-                <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 backdrop-blur-md bg-slate-900/60 animate-in fade-in">
-                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 max-w-sm w-full text-center shadow-2xl border border-rose-100 dark:border-rose-900/20">
-                        <div className="w-16 h-16 bg-rose-50 dark:bg-rose-900/30 text-rose-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                            <IconTrash className="w-8 h-8" />
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-10 max-w-sm w-full text-center shadow-2xl border border-slate-100 dark:border-slate-800 animate-in zoom-in-95 duration-300">
+                        <div className="w-20 h-20 bg-rose-50 dark:bg-rose-900/30 text-rose-600 rounded-3xl flex items-center justify-center mx-auto mb-8">
+                            <IconTrash className="w-10 h-10" />
                         </div>
-                        <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-2">Delete Reminder?</h3>
-                        <p className="text-slate-500 text-sm font-medium mb-8">This action cannot be undone. This reminder will be removed from your cloud account.</p>
-                        <div className="grid grid-cols-2 gap-3">
-                            <button onClick={() => setDeleteConfirmId(null)} className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase text-[10px] tracking-widest">Cancel</button>
-                            <button onClick={async () => { await handleDeleteReminder(deleteConfirmId); setDeleteConfirmId(null); }} className="py-4 bg-rose-600 text-white font-black rounded-2xl hover:bg-rose-700 shadow-lg shadow-rose-100 dark:shadow-none transition-all uppercase text-[10px] tracking-widest">Confirm</button>
+                        <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-3">Delete Reminder?</h3>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-10 leading-relaxed">This action is permanent and will remove the partner from your cloud callback queue.</p>
+                        <div className="grid grid-cols-2 gap-4">
+                            <button onClick={() => setDeleteConfirmId(null)} className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-black rounded-2xl hover:bg-slate-200 transition-all uppercase text-[10px] tracking-widest">Back</button>
+                            <button onClick={async (e) => { e.stopPropagation(); await handleDeleteReminder(deleteConfirmId); setDeleteConfirmId(null); }} className="py-4 bg-rose-600 text-white font-black rounded-2xl hover:bg-rose-700 shadow-xl shadow-rose-200 dark:shadow-none transition-all uppercase text-[10px] tracking-widest">Confirm</button>
                         </div>
                     </div>
                 </div>

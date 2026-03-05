@@ -214,8 +214,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log(`[DELETE] Removing reminder ${id} for user ${user.id}`);
         const { error } = await supabase.from('reminders').delete().eq('id', id).eq('user_id', user.id);
         if (error) {
-            console.error("Error deleting reminder:", error);
-            alert("Failed to delete reminder. Please try again.");
+            console.error("❌ DataContext: Error deleting reminder:", error.message, error.details);
+            alert(`Failed to delete reminder: ${error.message}`);
             return;
         }
         await refreshData();
