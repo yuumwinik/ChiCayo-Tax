@@ -61,6 +61,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
 
   const { allAppointments, allUsers } = useData();
   const [matchInfo, setMatchInfo] = useState<{
+    id: string,
     agentName: string,
     date: string,
     stage: string,
@@ -134,6 +135,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
 
       if (match) {
         setMatchInfo({
+          id: match.id,
           agentName: allUsers.find(u => u.id === match.userId)?.name || 'Unknown Agent',
           date: match.onboardedAt || match.scheduledAt,
           stage: match.stage,
@@ -223,7 +225,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
       aeName: finalAeName,
       scheduledAt,
       stage: finalStage,
-      id: initialData?.id
+      id: (formData.type === 'activation' && matchInfo?.id) ? matchInfo.id : initialData?.id
     });
     onClose();
   };

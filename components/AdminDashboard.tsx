@@ -24,9 +24,6 @@ interface AdminDashboardProps {
   appointments?: Appointment[]; onApplyIncentive?: (rule: Partial<IncentiveRule>) => void;
   allUsers?: User[]; lifetimeTeamEarnings?: number; incentiveRules?: IncentiveRule[];
   onDeleteIncentiveRule?: (id: string) => void; allIncentives?: Incentive[];
-  onImportReferrals?: (rows: { name: string, phone: string, referrals: number, date: string }[]) => void;
-  onManualReferral?: (clientId: string, count: number) => void;
-  onDeleteReferral?: (clientId: string, entryId: string) => void;
   onViewAppt: (appt: Appointment, stack?: Appointment[]) => void;
   performanceStats?: {
     agentStats: Record<string, {
@@ -48,7 +45,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   selfCommissionRate = 300, referralRate = 200, activationRate = 1000, onUpdateMasterCommissions,
   activeCycle, activityLogs = [], onLogOnboard, appointments = [], onApplyIncentive,
   allUsers = [], incentiveRules = [], onDeleteIncentiveRule, allIncentives = [],
-  onImportReferrals, onManualReferral, onDeleteReferral, onViewAppt, performanceStats
+  onViewAppt, performanceStats
 }) => {
   const [activeTab, setActiveTab] = useState<AdminView>('overview');
   const [selectedCycleId, setSelectedCycleId] = useState<string>('active');
@@ -263,7 +260,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight shrink-0">Admin Console</h2>
           <div className="bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl flex flex-wrap justify-center gap-1 shadow-inner border border-slate-200/50 dark:border-slate-700/50 overflow-x-auto no-scrollbar max-w-full">
             {['overview', 'deepdive', 'referral-wins', 'cycles', 'auditlog'].map((id) => (
-              <button key={id} onClick={() => setActiveTab(id as AdminView)} className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest px-3 md:px-6 py-2 md:py-2.5 rounded-xl transition-all duration-300 ${activeTab === id ? 'bg-white dark:bg-slate-600 text-indigo-600 dark:text-white shadow-lg scale-[1.02]' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>{id.replace('auditlog', 'Audit Log').replace('referral-wins', 'Referral Wins').replace('deepdive', 'Deep Dive').replace('cycles', 'Payout Windows').replace('overview', 'Overview')}</button>
+              <button key={id} onClick={() => setActiveTab(id as AdminView)} className={`text-[9px] md:text-[10px] font-black uppercase tracking-widest px-3 md:px-6 py-2 md:py-2.5 rounded-xl transition-all duration-300 ${activeTab === id ? 'bg-white dark:bg-slate-600 text-indigo-600 dark:text-white shadow-lg scale-[1.02]' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>{id.replace('auditlog', 'Audit Log').replace('referral-wins', 'Activation Wins').replace('deepdive', 'Deep Dive').replace('cycles', 'Payout Windows').replace('overview', 'Overview')}</button>
             ))}
           </div>
         </div>
@@ -421,8 +418,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             referralRate={referralRate}
             commissionRate={commissionRate}
             selfCommissionRate={selfCommissionRate}
-            onManualReferral={onManualReferral}
-            onDeleteReferral={onDeleteReferral}
           />
         )}
         {activeTab === 'referral-wins' && <ReferralWinsTab appointments={appointments} incentives={allIncentives} users={allUsers} payCycles={payCycles} referralRate={referralRate} currentUser={allUsers.find(u => u.role === 'admin')} onViewAppt={onViewAppt} />}
@@ -436,11 +431,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             selfCommissionRate={selfCommissionRate}
             referralRate={referralRate}
             onUpdateMasterCommissions={(std, self, ref, act) => onUpdateMasterCommissions(std, self, ref, act)}
-            onImportReferrals={onImportReferrals}
             appointments={appointments}
             allUsers={allUsers}
-            onManualReferral={onManualReferral}
-            onDeleteReferral={onDeleteReferral}
             allIncentives={allIncentives}
           />
         )}

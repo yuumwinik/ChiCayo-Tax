@@ -73,24 +73,24 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-8 text-slate-100 dark:text-slate-800 transition-transform group-hover:scale-110"><IconTrophy className="w-16 h-16" /></div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Total Referral Earnings</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Total Activation Earnings</p>
                     <p className="text-4xl font-black text-emerald-600 tabular-nums">{formatCurrency(stats.totalEarnings)}</p>
                 </div>
                 <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-8 text-slate-100 dark:text-slate-800 transition-transform group-hover:scale-110"><IconActivity className="w-16 h-16" /></div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Total Managed Referrals</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Total Managed Activations</p>
                     <p className="text-4xl font-black text-slate-900 dark:text-white tabular-nums">{stats.totalReferrals}</p>
                 </div>
                 <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-8 text-slate-100 dark:text-slate-800 transition-transform group-hover:scale-110"><IconClock className="w-16 h-16" /></div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Avg. Referral Velocity</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Avg. Activation Velocity</p>
                     <p className="text-4xl font-black text-indigo-600 tabular-nums">{stats.avgVelocity} <span className="text-sm">Days</span></p>
                 </div>
             </div>
 
             {/* Referral Timeline Feed */}
             <div className="space-y-4">
-                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest px-4">Partnership Referral Feed</h3>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest px-4">Partnership Activation Feed</h3>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {referralData.map((data, idx) => (
                         <div
@@ -128,12 +128,12 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
                                     {data.velocityDays !== null && (
                                         <div className="flex flex-col items-center gap-1">
                                             <div className="w-3 h-3 rounded-full bg-indigo-500 border-2 border-white dark:border-slate-900 shadow-sm animate-pulse" />
-                                            <span className="text-[8px] font-black text-indigo-500 uppercase">+{data.velocityDays}d First Ref</span>
+                                            <span className="text-[8px] font-black text-indigo-500 uppercase">+{data.velocityDays}d Activation</span>
                                         </div>
                                     )}
                                     <div className="flex flex-col items-center gap-1">
                                         <div className="w-4 h-4 rounded-full bg-rose-500 border-2 border-white dark:border-slate-900 shadow-sm flex items-center justify-center"><IconStar className="w-2 h-2 text-white" /></div>
-                                        <span className="text-[8px] font-black text-rose-500 uppercase">{data.referralCount} Total</span>
+                                        <span className="text-[8px] font-black text-rose-500 uppercase">{data.referralCount} Activated</span>
                                     </div>
                                 </div>
                             </div>

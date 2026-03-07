@@ -25,9 +25,6 @@ interface DataContextType {
     setReferralCommissionRate: (rate: number) => void;
     setCommissionActivation: (rate: number) => void;
     handleUpdateMasterCommissions: (standard: number, self: number, referral: number, activation: number) => Promise<void>;
-    handleImportReferrals: (rows: { name: string, phone: string, referrals: number, date: string }[]) => Promise<void>;
-    handleManualReferralUpdate: (clientId: string, newCount: number) => Promise<void>;
-    handleDeleteReferralEntry: (clientId: string, entryId: string) => Promise<void>;
     handleSaveAppointment: (data: any) => Promise<void>;
     handleMoveStage: (id: string, stage: AppointmentStage, isManualSelfOnboard?: boolean) => Promise<void>;
     handleDeleteAppointment: (id: string) => Promise<void>;
@@ -261,150 +258,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return payCycles.find(c => n >= new Date(c.startDate).getTime() && n <= new Date(c.endDate).setHours(23, 59, 59, 999));
     }, [payCycles]);
 
-    const handleImportReferrals = async (rows: { name: string, phone: string, referrals: number, date: string }[]) => {
-        if (user?.role !== 'admin') return;
-        if (!activeCycle) {
-            alert("No active Pay Cycle found. Please establish a Payout Window before importing reports.");
-            return;
-        }
-
-        const now = new Date().toISOString();
-        let matchedCount = 0;
-        let newBonusTotal = 0;
-
-        for (const row of rows) {
-            const cleanName = row.name.toLowerCase().trim();
-            const cleanPhone = row.phone.replace(/\D/g, '');
-
-            const appt = allAppointments.find(a =>
-                (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED) &&
-                (a.name.toLowerCase().trim() === cleanName || a.phone.replace(/\D/g, '').includes(cleanPhone))
-            );
-
-            if (appt) {
-                // If this is the FIRST referral ever seen for this partner, it's an Activation
-                const isFirstActivation = (appt.referralCount || 0) === 0 && row.referrals > 0;
-
-                if (isFirstActivation || row.referrals > (appt.referralCount || 0)) {
-                    const delta = isFirstActivation ? 1 : row.referrals - (appt.referralCount || 0); // Only track 1st if we follow the new rule strictly, but row.referrals might be > 1. 
-                    // New Rule: "We won't track all referrals but ONLY the 1st". 
-                    // Interpretation: Activation is a one-time thing. referral_count should probably stay at 1.
-
-                    if (!appt.activatedAt) {
-                        const incentiveId = generateId();
-                        const rewardCents = commissionActivation; // $10 for activation
-
-                        await supabase.from('appointments').update({
-                            stage: AppointmentStage.ACTIVATED,
-                            activated_at: now,
-                            activated_by_user_id: appt.userId, // Admin import: original agent gets it
-                            referral_count: 1,
-                            last_referral_at: now
-                        }).eq('id', appt.id);
-
-                        await supabase.from('incentives').insert({
-                            id: incentiveId,
-                            user_id: appt.userId,
-                            amount_cents: rewardCents,
-                            label: `Partner Activation: ${appt.name}`,
-                            applied_cycle_id: activeCycle.id,
-                            related_appointment_id: appt.id,
-                            created_at: now
-                        });
-
-                        matchedCount++;
-                        newBonusTotal += rewardCents;
-                    }
-                }
-            }
-        }
-
-        alert(`Ledger Sync Complete.\n- Successfully activated/updated ${matchedCount} partners.\n- Distributed ${((newBonusTotal / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' }))} in activation rewards.`);
-        await refreshData();
-    };
-
-    const handleManualReferralUpdate = async (clientId: string, newCount: number) => {
-        if (user?.role !== 'admin') return;
-        if (!activeCycle) {
-            alert("Active Pay Cycle Required.");
-            return;
-        }
-
-        const appt = allAppointments.find(a => a.id === clientId);
-        if (!appt) return;
-
-        const current = appt.referralCount || 0;
-        const delta = newCount - current;
-        const now = new Date().toISOString();
-
-        if (delta === 0) return;
-
-        const incentiveId = generateId();
-        const historyId = generateId();
-        const updatedHistory: ReferralHistoryEntry[] = [...(appt.referralHistory || []), { id: historyId, date: now, count: delta, incentiveId }];
-
-        await supabase.from('appointments').update({
-            referral_count: newCount,
-            last_referral_at: now,
-            referral_history: updatedHistory
-        }).eq('id', appt.id);
-
-        if (delta > 0) {
-            const bonusCents = delta * referralCommissionRate;
-            await supabase.from('incentives').insert({
-                id: incentiveId,
-                user_id: appt.userId,
-                amount_cents: bonusCents,
-                label: `Manual Ref: ${delta} from ${appt.name}`,
-                applied_cycle_id: activeCycle.id,
-                related_appointment_id: appt.id,
-                created_at: now
-            });
-
-            await supabase.from('activity_logs').insert({
-                id: generateId(),
-                user_id: user?.id,
-                user_name: user?.name,
-                action: 'REFERRAL_ADDED',
-                details: `Added ${delta} referrals to ${appt.name} for agent ${allUsers.find(u => u.id === appt.userId)?.name}`,
-                timestamp: now
-            });
-        }
-
-        await refreshData();
-    };
-
-    const handleDeleteReferralEntry = async (clientId: string, entryId: string) => {
-        if (user?.role !== 'admin') return;
-        const appt = allAppointments.find(a => a.id === clientId);
-        if (!appt || !appt.referralHistory) return;
-
-        const entry = appt.referralHistory.find(e => e.id === entryId);
-        if (!entry) return;
-
-        const updatedHistory = appt.referralHistory.filter(e => e.id !== entryId);
-        const newCount = Math.max(0, (appt.referralCount || 0) - entry.count);
-
-        await Promise.all([
-            supabase.from('appointments').update({
-                referral_count: newCount,
-                referral_history: updatedHistory,
-                last_referral_at: newCount === 0 ? null : appt.lastReferralAt // Clear indicator if no referrals left
-            }).eq('id', clientId),
-            supabase.from('incentives').delete().eq('id', entry.incentiveId)
-        ]);
-
-        await supabase.from('activity_logs').insert({
-            id: generateId(),
-            user_id: user?.id,
-            user_name: user?.name,
-            action: 'REFERRAL_REMOVED',
-            details: `Removed referral entry of ${entry.count} from ${appt.name}`,
-            timestamp: new Date().toISOString()
-        });
-
-        await refreshData();
-    };
+    // Import referrals and manual referral functions removed
 
     const processOnboardingIncentives = async (userId: string, appointmentId: string) => {
         const now = new Date();
@@ -734,9 +588,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setReferralCommissionRate,
             setCommissionActivation,
             handleUpdateMasterCommissions,
-            handleImportReferrals,
-            handleManualReferralUpdate,
-            handleDeleteReferralEntry,
             handleSaveAppointment,
             handleMoveStage,
             handleDeleteAppointment,
