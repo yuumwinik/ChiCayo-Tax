@@ -16,6 +16,7 @@ interface DataContextType {
     referralCommissionRate: number;
     commissionActivation: number;
     reminders: Reminder[];
+    handleConvertReminderToAppointment: (reminder: Reminder, stage: AppointmentStage) => Promise<void>;
     handleSaveReminder: (data: Partial<Reminder>) => Promise<void>;
     handleDeleteReminder: (id: string) => Promise<void>;
     refreshData: () => Promise<void>;
@@ -126,7 +127,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     activatedAt: a.activated_at,
                     originalUserId: a.original_user_id,
                     originalOnboardType: a.original_onboard_type,
-                    originalAeName: a.original_ae_name
+                    originalAeName: a.original_ae_name,
+                    loggedMode: a.logged_mode as 'onboard' | 'activation' | 'transfer' | undefined
                 })));
             }
 
@@ -154,6 +156,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     email: r.email,
                     callBackAt: r.call_back_at,
                     notes: r.notes,
+                    isPendingActivation: r.is_pending_activation || false,
                     createdAt: r.created_at
                 })));
             }
@@ -206,6 +209,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: data.email || '',
             call_back_at: data.callBackAt || now,
             notes: data.notes || '',
+            is_pending_activation: data.isPendingActivation || false,
             created_at: data.createdAt || now
         };
 
@@ -228,6 +232,60 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         await refreshData();
     }, [user, refreshData]);
+
+    const activeCycle = useMemo(() => {
+        const n = Date.now();
+        return payCycles.find(c => n >= new Date(c.startDate).getTime() && n <= new Date(c.endDate).setHours(23, 59, 59, 999));
+    }, [payCycles]);
+
+    const handleConvertReminderToAppointment = useCallback(async (reminder: Reminder, stage: AppointmentStage) => {
+        if (!user) return;
+        const now = new Date();
+        const targetId = generateId();
+        let earnedAmount = 0;
+        if (stage === AppointmentStage.ONBOARDED) {
+            earnedAmount = commissionRate;
+        } else if (stage === AppointmentStage.ACTIVATED) {
+            earnedAmount = commissionActivation;
+        }
+        const dbData = {
+            id: targetId,
+            name: reminder.name,
+            phone: reminder.phone,
+            email: reminder.email,
+            scheduled_at: reminder.callBackAt,
+            stage,
+            notes: reminder.notes,
+            user_id: user.id,
+            type: 'reminder_conversion',
+            earned_amount: earnedAmount,
+            onboarded_at: (stage === AppointmentStage.ONBOARDED || stage === AppointmentStage.ACTIVATED) ? now.toISOString() : null,
+            activated_at: stage === AppointmentStage.ACTIVATED ? now.toISOString() : null,
+            logged_mode: stage === AppointmentStage.ACTIVATED ? 'activation' : 'onboard',
+            created_at: now.toISOString()
+        };
+        const { error } = await supabase.from('appointments').insert(dbData);
+        if (error) {
+            console.error("Error converting reminder:", error);
+            alert(`Failed to convert reminder: ${error.message}`);
+            return;
+        }
+        if (stage === AppointmentStage.ACTIVATED && activeCycle) {
+            await supabase.from('incentives').insert({
+                id: generateId(),
+                user_id: user.id,
+                amount_cents: Math.min(commissionActivation, 1000),
+                label: `Partner Activation: ${reminder.name}`,
+                applied_cycle_id: activeCycle.id,
+                related_appointment_id: targetId,
+                created_at: now.toISOString()
+            });
+        }
+        if (reminder.id) {
+            await supabase.from('reminders').delete().eq('id', reminder.id);
+        }
+        await refreshData();
+    }, [user, commissionRate, commissionActivation, activeCycle, refreshData]);
 
     // Initial fetch
     useEffect(() => {
@@ -252,11 +310,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCommissionActivation(activation); // Added this line
         await refreshData();
     };
-
-    const activeCycle = useMemo(() => {
-        const n = Date.now();
-        return payCycles.find(c => n >= new Date(c.startDate).getTime() && n <= new Date(c.endDate).setHours(23, 59, 59, 999));
-    }, [payCycles]);
 
     // Import referrals and manual referral functions removed
 
@@ -316,9 +369,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const now = new Date();
 
         let bonus = 0;
+        const targetId = data.id || generateId();
+
         if (data.stage === AppointmentStage.ONBOARDED && !originalAppt?.onboardedAt) {
-            const id = data.id || generateId();
-            bonus = await processOnboardingIncentives(finalUserId, id);
+            bonus = await processOnboardingIncentives(finalUserId, targetId);
+        }
+
+        if (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) {
+            // logMode may be provided when using the form
+            const mode: 'onboard' | 'activation' | undefined = data.logMode;
+            // If created via activation form, we still want an onboard timestamp so the record shows up in cycles
+            if (mode === 'activation' && !originalAppt) {
+                // will be handled by updateProps below (isNowOnboarded ensures onboarded_at is set)
+            }
+
+            if (activeCycle) {
+                const activationBonus = Math.min(commissionActivation, 1000); // Hard cap at $10
+                await supabase.from('incentives').insert({
+                    id: generateId(),
+                    user_id: finalUserId,
+                    amount_cents: activationBonus,
+                    label: `Partner Activation: ${data.name}`,
+                    applied_cycle_id: activeCycle.id,
+                    related_appointment_id: targetId,
+                    created_at: now.toISOString()
+                });
+            } else {
+                console.warn('Cannot assign activation bonus: No active pay cycle.');
+            }
         }
 
         if (originalAppt) {
@@ -347,7 +425,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             activated_at: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? now.toISOString() : originalAppt?.activatedAt,
             original_user_id: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt && originalAppt?.userId !== finalUserId) ? originalAppt?.userId : (originalAppt?.originalUserId || null),
             original_onboard_type: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? (originalAppt?.aeName === (allUsers.find(u => u.id === originalAppt?.userId)?.name) ? 'self' : 'transfer') : (originalAppt?.originalOnboardType || null),
-            original_ae_name: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? (originalAppt?.aeName || null) : (originalAppt?.originalAeName || null)
+            original_ae_name: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? (originalAppt?.aeName || null) : (originalAppt?.originalAeName || null),
+            logged_mode: data.logMode || (originalAppt?.loggedMode || undefined)
         };
 
         try {
@@ -355,7 +434,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const { error } = await supabase.from('appointments').update(dbData).eq('id', data.id);
                 if (error) throw error;
             } else {
-                const { error } = await supabase.from('appointments').insert({ ...dbData, id: data.id || generateId(), created_at: now.toISOString() });
+                const { error } = await supabase.from('appointments').insert({ ...dbData, id: targetId, created_at: now.toISOString() });
                 if (error) throw error;
             }
             await refreshData();
@@ -399,6 +478,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             if (stage === AppointmentStage.ACTIVATED && appt.stage !== AppointmentStage.ACTIVATED) {
                 if (!activeCycle) throw new Error("Active Payout Window Required");
+                // Allow activation by any team member; credit the activator
                 await supabase.from('incentives').insert({
                     id: generateId(),
                     user_id: user?.id || appt.userId,
@@ -416,9 +496,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 earned_amount: isNowOnboarded ? baseCommission : 0,
                 onboarded_at: isNowOnboarded ? (appt.onboardedAt || new Date().toISOString()) : null,
                 activated_at: (stage === AppointmentStage.ACTIVATED) ? (appt.activatedAt || new Date().toISOString()) : null,
+                activated_by_user_id: (stage === AppointmentStage.ACTIVATED) ? user?.id : appt.activatedByUserId,
                 referral_count: (stage === AppointmentStage.ACTIVATED) ? (appt.referralCount || 1) : 0,
                 last_referral_at: (stage === AppointmentStage.ACTIVATED) ? (appt.lastReferralAt || new Date().toISOString()) : null,
-                ae_name: isSelf ? (agentProfile?.name || 'Self') : appt.aeName
+                ae_name: isSelf ? (agentProfile?.name || 'Self') : appt.aeName,
+                logged_mode: stage === AppointmentStage.ACTIVATED ? (appt.loggedMode || 'transfer') : appt.loggedMode
             };
 
             const { error: updateError } = await supabase.from('appointments').update(updateProps).eq('id', id);
@@ -581,6 +663,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             reminders,
             handleSaveReminder,
             handleDeleteReminder,
+            handleConvertReminderToAppointment,
             refreshData,
             loadingData,
             setCommissionRate,

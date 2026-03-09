@@ -35,7 +35,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         notificationSettings: profile.notification_settings,
                         preferredDialer: profile.preferred_dialer,
                         dismissedCycleIds: profile.dismissed_cycle_ids || [],
-                        showFailedSection: profile.show_failed_section ?? true
+                        showFailedSection: profile.show_failed_section ?? false
                     });
                 } else {
                     console.error("❌ UserContext: Session valid but NO profile found in 'users' table for ID:", session.user.id);
@@ -88,7 +88,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 avatarId: data.avatar_id,
                 notificationSettings: data.notification_settings,
                 preferredDialer: data.preferred_dialer,
-                showFailedSection: data.show_failed_section ?? true
+                showFailedSection: data.show_failed_section ?? false
             });
         }
     };

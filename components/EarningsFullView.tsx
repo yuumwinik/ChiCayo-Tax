@@ -53,7 +53,7 @@ export const EarningsFullView: React.FC<EarningsFullViewProps> = ({
     const end = new Date(window.endDate).setHours(23, 59, 59, 999);
     return filteredAppointments.filter(a => {
       const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
-      return a.stage === AppointmentStage.ONBOARDED && d >= start && d <= end;
+      return (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED) && d >= start && d <= end;
     });
   };
 
@@ -67,10 +67,14 @@ export const EarningsFullView: React.FC<EarningsFullViewProps> = ({
       "Phone",
       "Closer Attribution",
       "Onboard Type",
+      "Stage",
+      "Log Mode",
       "Base Payout ($)",
+      "Activation Bonus ($)",
       "Referral Count",
       "Referral Bonus ($)",
-      "Total Deal Payout ($)"
+      "Total Deal Payout ($)",
+      "Earning Breakdown"
     ];
     let csvRows = [headers.join(",")];
 
@@ -88,6 +92,23 @@ export const EarningsFullView: React.FC<EarningsFullViewProps> = ({
         const basePayout = (appt.earnedAmount || 0) / 100;
         const refCount = appt.referralCount || 0;
         const refBonus = (refCount * referralRate) / 100;
+        
+        // Find related activation incentive in SAME cycle
+        const activationIncentive = incentives.find(i => 
+          i.relatedAppointmentId === appt.id && 
+          i.appliedCycleId === win.id &&
+          (i.label || '').toLowerCase().includes('activation')
+        );
+        const activationBonus = activationIncentive ? (activationIncentive.amountCents / 100) : 0;
+        
+        // Build breakdown description
+        const breakdownParts = [];
+        if (basePayout > 0) breakdownParts.push(`$${basePayout.toFixed(2)} Onboard`);
+        if (activationBonus > 0) breakdownParts.push(`$${activationBonus.toFixed(2)} Activation`);
+        if (refBonus > 0) breakdownParts.push(`$${refBonus.toFixed(2)} Referral`);
+        const breakdown = breakdownParts.length > 1 ? breakdownParts.join(' + ') : (breakdownParts[0] || '');
+
+        const totalPayout = basePayout + activationBonus + refBonus;
 
         const row = [
           captureDate.toLocaleDateString(),
@@ -98,10 +119,14 @@ export const EarningsFullView: React.FC<EarningsFullViewProps> = ({
           `"${appt.phone}"`,
           `"${appt.aeName || 'Self'}"`,
           isSelf ? "Self-Onboard" : "AE Transfer",
+          appt.stage,
+          appt.loggedMode || '',
           basePayout.toFixed(2),
+          activationBonus.toFixed(2),
           refCount,
           refBonus.toFixed(2),
-          (basePayout + refBonus).toFixed(2)
+          totalPayout.toFixed(2),
+          `"${breakdown}"`
         ];
         csvRows.push(row.join(","));
       });

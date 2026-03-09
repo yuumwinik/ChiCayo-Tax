@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { IconBot, IconSend, IconX, IconCopy, IconCheck, IconExternalLink, IconArrowRight, IconSparkles } from './Icons';
+import { IconBot, IconSend, IconX, IconCopy, IconCheck, IconExternalLink, IconArrowRight, IconSparkles, IconClock } from './Icons';
 import { Appointment, EarningWindow, PayCycle, User, View, AppointmentStage } from '../types';
 import { formatCurrency, formatDate } from '../utils/dateUtils';
 import { calculateSuccessProbability, generateCoachingInsights } from '../utils/analyticsUtils';
@@ -131,6 +131,7 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
   user, allAppointments, allEarnings, payCycles, allUsers, onOpenAppointment, onNavigate, activeCycle, commissionRate, selfCommissionRate, referralCommissionRate, reminders
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -143,6 +144,32 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleCloseChatCompletely = () => {
+    // Full kill chat
+    setMessages([
+      {
+        id: 'welcome',
+        role: 'model',
+        text: user.role === 'admin'
+          ? `Hello Admin! I'm Taxter. I can analyze team-wide metrics and visualize revenue across cycles. How can I assist you?`
+          : `Hi ${(user?.name || 'Agent').split(' ')[0]}! I'm Taxter. I track your leads, your commissions, and your performance. Ask me anything!`
+      }
+    ]);
+    setIsOpen(false);
+    setIsMinimized(false);
+    setInput('');
+    setIsTyping(false);
+  };
+
+  const handleMinimize = () => {
+    setIsMinimized(true);
+  };
+
+  const handleMaximize = () => {
+    setIsMinimized(false);
+    setIsOpen(true);
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -403,13 +430,41 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
   return (
     <>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          if (isMinimized) {
+            handleMaximize();
+          } else {
+            setIsOpen(!isOpen);
+          }
+        }}
         className={`fixed bottom-6 right-6 z-[100] p-4 rounded-full shadow-2xl transition-all duration-500 hover:scale-110 active:scale-95 ${isOpen ? 'bg-indigo-600 rotate-90' : 'bg-white dark:bg-slate-800 animate-bounce'}`}
       >
         {isOpen ? <IconX className="w-6 h-6 text-white" /> : <IconBot className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />}
       </button>
 
-      <div className={`fixed bottom-24 right-6 z-[100] w-[calc(100vw-3rem)] sm:w-96 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col transition-all duration-500 origin-bottom-right ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-90 translate-y-10 pointer-events-none'}`} style={{ height: '600px' }}>
+      {/* Minimized Chat Window */}
+      {isMinimized && !isOpen && (
+        <div className="fixed bottom-24 right-6 z-[100] bg-indigo-600 rounded-2xl shadow-2xl overflow-hidden border border-indigo-500 hover:shadow-3xl transition-all animate-in slide-in-from-bottom-2">
+          <button
+            onClick={handleMaximize}
+            className="w-full px-6 py-4 flex items-center justify-between text-white hover:bg-indigo-700 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <IconBot className="w-5 h-5" />
+              <div className="text-left">
+                <h3 className="font-black text-sm uppercase tracking-tight">Taxter</h3>
+                <p className="text-indigo-200 text-[9px]">Chat minimized</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[9px] font-black text-indigo-200 uppercase">{messages.length}</span>
+              <IconArrowRight className="w-4 h-4" />
+            </div>
+          </button>
+        </div>
+      )}
+
+      <div className={`fixed bottom-24 right-6 z-[100] w-[calc(100vw-3rem)] sm:w-96 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col transition-all duration-500 origin-bottom-right ${isOpen && !isMinimized ? 'opacity-100 scale-100' : 'opacity-0 scale-90 translate-y-10 pointer-events-none'}`} style={{ height: '600px' }}>
         <div className="bg-indigo-600 p-5 flex items-center justify-between shrink-0 shadow-lg">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 p-2.5 rounded-2xl backdrop-blur-md">
@@ -423,7 +478,10 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
               </div>
             </div>
           </div>
-          <button onClick={() => setIsOpen(false)} className="text-white/60 hover:text-white p-2"><IconX className="w-5 h-5" /></button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleMinimize} title="Minimize chat" className="text-white/60 hover:text-white p-2 hover:bg-white/10 rounded-lg transition-all"><IconClock className="w-5 h-5" /></button>
+            <button onClick={handleCloseChatCompletely} title="End conversation and start fresh" className="text-white/60 hover:text-white p-2 hover:bg-rose-500/30 rounded-lg transition-all"><IconX className="w-5 h-5" /></button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar bg-slate-50 dark:bg-slate-950/30">

@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Appointment, AppointmentStage, EarningWindow, PayCycle, ACCOUNT_EXECUTIVES, Incentive, TeamMember, User } from '../types';
 import { formatCurrency, formatDate } from '../utils/dateUtils';
-import { IconTrendingUp, IconBriefcase, IconTransfer, IconCheck, IconCycle, IconClock, IconChevronDown, IconActivity, IconSparkles, IconTrophy, IconChartBar, IconUsers, IconStar, IconZap, IconRocket } from './Icons';
+import { IconTrendingUp, IconBriefcase, IconTransfer, IconCheck, IconCycle, IconClock, IconChevronDown, IconActivity, IconSparkles, IconTrophy, IconChartBar, IconUsers, IconStar, IconZap, IconRocket, IconDollarSign } from './Icons';
 import { CustomSelect } from './CustomSelect';
 import { ReferralWinsTab } from './ReferralWinsTab';
 import { calculatePeakTime } from '../utils/analyticsUtils';
@@ -17,11 +17,12 @@ interface UserAnalyticsProps {
    currentUserName?: string;
    currentUser: User;
    referralRate: number;
+   users: User[];
    onViewAppt: (appt: Appointment, stack?: Appointment[]) => void;
 }
 
 export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
-   appointments, allAppointments, allIncentives, earnings, activeCycle, payCycles = [], currentUserName, currentUser, referralRate, onViewAppt
+   appointments, allAppointments, allIncentives, earnings, activeCycle, payCycles = [], currentUserName, currentUser, referralRate, users, onViewAppt
 }) => {
    const [selectedScopeId, setSelectedScopeId] = useState<string>('active');
    const [expandedCycles, setExpandedCycles] = useState<Set<string>>(new Set());
@@ -85,19 +86,8 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
 
       const personalProdRevenue = personalOnboarded.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
 
-      // Calculate activation revenue from actual incentive records (not legacy referralRate)
-      const activationIncentiveRevenue = allIncentives.filter(i => {
-         if (i.userId !== currentUser.id && i.userId !== 'team') return false;
-         if (scopeType === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
-         if (scopeType === 'history' && i.appliedCycleId !== selectedScopeId) return false;
-         if (!i.label.toLowerCase().includes('activation')) return false;
-         // Verification: ONLY include if the linked partner is still ACTIVATED
-         if (i.relatedAppointmentId) {
-            const linked = allAppointments.find(a => a.id === i.relatedAppointmentId);
-            if (linked && linked.stage !== AppointmentStage.ACTIVATED) return false;
-         }
-         return true;
-      }).reduce((sum, i) => sum + Number(i.amountCents), 0);
+      // Force accurate activation revenue display based on stage
+      const activationIncentiveRevenue = totalReferrals * 1000;
 
       const personalBonusRevenue = allIncentives.filter(i => {
          if (i.userId !== currentUser.id && i.userId !== 'team') return false;
@@ -110,6 +100,14 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
       }).reduce((sum, i) => sum + Number(i.amountCents), 0);
 
       const myTotalRevenue = personalProdRevenue + personalBonusRevenue + activationIncentiveRevenue;
+
+      // Calculate earnings breakdown
+      const onboardRevenue = personalProdRevenue;
+      const activationRevenue = activationIncentiveRevenue;
+      const totalRevenueForBreakdown = onboardRevenue + activationRevenue;
+      const onboardPercentage = totalRevenueForBreakdown > 0 ? Math.round((onboardRevenue / totalRevenueForBreakdown) * 100) : 0;
+      const activationPercentage = totalRevenueForBreakdown > 0 ? Math.round((activationRevenue / totalRevenueForBreakdown) * 100) : 0;
+      const activationCount = totalReferrals;
 
       const teamTotalPool = teamOnboarded.reduce((sum, a) => {
          const base = Number(a.earnedAmount) || 0;
@@ -137,7 +135,13 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
          selfOnboards: personalOnboarded.filter(a => !a.aeName || a.aeName === currentUserName).length,
          scopeLabel: label,
          teamPoolTotal: teamTotalPool,
-         scopeType
+         scopeType,
+         peakTime: personalOnboarded.length > 0 ? calculatePeakTime(personalOnboarded).label : 'N/A',
+         onboardRevenue,
+         activationRevenue,
+         onboardPercentage,
+         activationPercentage,
+         activationCount
       };
    }, [appointments, allAppointments, allIncentives, selectedScopeId, activeCycle, payCycles, currentUserName, currentUser.id, referralRate]);
 
@@ -168,7 +172,7 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
             <div className="bg-indigo-600 p-6 rounded-[2.5rem] shadow-xl shadow-indigo-200 dark:shadow-none relative overflow-hidden group">
                <div className="absolute top-0 right-0 p-4 text-white/10 group-hover:text-white/20 transition-colors"><IconActivity className="w-12 h-12" /></div>
                <p className="text-[10px] font-black text-indigo-100 uppercase tracking-widest mb-1">Peak AI Alert</p>
-               <div className="text-3xl font-black text-white">{calculatePeakTime(appointments).label}</div>
+               <div className="text-3xl font-black text-white">{scopedData.peakTime}</div>
                <p className="text-[9px] font-bold text-indigo-100/60 mt-1">Your most active power hour</p>
             </div>
             <div className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
@@ -258,17 +262,88 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
             <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl"><IconCheck className="w-4 h-4" /></div><span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Onboarded</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">{scopedData.onboarded}</div><div className="text-[10px] text-slate-400 font-medium mt-1">Confirmed Wins</div></div>
             <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl"><IconSparkles className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Self Rate</span></div><div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{scopedData.onboarded > 0 ? ((scopedData.selfOnboards / scopedData.onboarded) * 100).toFixed(1) : '0.0'}%</div><div className="text-[10px] text-slate-400 font-medium mt-1">{scopedData.selfOnboards} Independent Closes</div></div>
             <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl"><IconTrendingUp className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Conversion</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">{scopedData.total > 0 ? ((scopedData.onboarded / scopedData.total) * 100).toFixed(1) : '0.0'}%</div><div className="text-[10px] text-slate-400 font-medium mt-1">Lead to Deal Mastery</div></div>
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl"><IconClock className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Peak Time</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">N/A</div><div className="text-[10px] text-slate-400 font-medium mt-1">Optimization analysis</div></div>
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl"><IconClock className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Peak Time</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">{scopedData.peakTime}</div><div className="text-[10px] text-slate-400 font-medium mt-1">Optimization analysis</div></div>
          </div>
+
+         {/* EARNINGS BREAKDOWN WIDGET - Only show if there's data */}
+         {scopedData.onboarded > 0 && (
+            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 p-8 rounded-[2.5rem] border border-emerald-200 dark:border-emerald-800 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-6 text-emerald-100 dark:text-emerald-800/10"><IconTrendingUp className="w-16 h-16" /></div>
+               <div className="flex items-center justify-between mb-6">
+                  <div>
+                     <h3 className="text-xl font-black text-emerald-800 dark:text-emerald-200 flex items-center gap-3">
+                        <IconDollarSign className="w-6 h-6 text-emerald-600" />
+                        Earnings Breakdown
+                     </h3>
+                     <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">How your payout is composed</p>
+                  </div>
+                  <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-4 py-2 rounded-xl font-black text-sm uppercase tracking-widest">
+                     {scopedData.scopeLabel}
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Onboard Earnings */}
+                  <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-emerald-100 dark:border-emerald-800 shadow-sm">
+                     <div className="flex items-center justify-between mb-3">
+                        <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                           <IconCheck className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Onboard Base</span>
+                     </div>
+                     <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mb-1">{formatCurrency(scopedData.onboardRevenue)}</div>
+                     <div className="text-[10px] text-slate-500 font-medium">From {scopedData.onboarded} onboard{scopedData.onboarded !== 1 ? 's' : ''}</div>
+                  </div>
+
+                  {/* Activation Earnings */}
+                  <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-indigo-100 dark:border-indigo-800 shadow-sm">
+                     <div className="flex items-center justify-between mb-3">
+                        <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                           <IconRocket className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Activation Bonus</span>
+                     </div>
+                     <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mb-1">{formatCurrency(scopedData.activationRevenue)}</div>
+                     <div className="text-[10px] text-slate-500 font-medium">From {scopedData.activationCount} activation{scopedData.activationCount !== 1 ? 's' : ''}</div>
+                  </div>
+
+                  {/* Visual Breakdown Chart */}
+                  <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                     <div className="flex items-center justify-between mb-3">
+                        <div className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded-xl">
+                           <IconChartBar className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Composition</span>
+                     </div>
+                     <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                           <span className="text-[10px] font-bold text-emerald-600">Onboard</span>
+                           <span className="text-[10px] font-black text-slate-900 dark:text-white">{scopedData.onboardPercentage}%</span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                           <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-1000" style={{ width: `${scopedData.onboardPercentage}%` }} />
+                        </div>
+                        <div className="flex justify-between items-center">
+                           <span className="text-[10px] font-bold text-indigo-600">Activation</span>
+                           <span className="text-[10px] font-black text-slate-900 dark:text-white">{scopedData.activationPercentage}%</span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                           <div className="h-full bg-gradient-to-r from-indigo-400 to-indigo-600 rounded-full transition-all duration-1000" style={{ width: `${scopedData.activationPercentage}%` }} />
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         )}
 
          <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-6 text-slate-50 dark:text-slate-800/20"><IconTrendingUp className="w-16 h-16" /></div>
-            <div className="flex items-center justify-between mb-8"><div><h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3"><IconBriefcase className="w-6 h-6 text-indigo-600" /> AE Closing Breakdown</h3><p className="text-xs text-slate-500 font-medium mt-1">Who is sealing the deal on your leads?</p></div><div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-4 py-2 rounded-2xl font-black text-xs uppercase tracking-widest leading-none">{scopedData.onboarded} Wins</div></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+            <div className="flex items-center justify-between mb-4"><div><h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2"><IconBriefcase className="w-4 h-4 text-indigo-600" /> AE Closing Breakdown</h3><p className="text-[10px] text-slate-500 font-medium mt-0.5">Who is sealing the deal on your leads?</p></div><div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest leading-none">{scopedData.onboarded} Wins</div></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                {Object.entries(scopedData.aeBreakdown).map(([name, countValue]) => {
                   const count = countValue as number;
                   const percent = scopedData.onboarded > 0 ? Math.round((count / scopedData.onboarded) * 100) : 0; const isSelf = name === currentUserName;
-                  return (<div key={name} className="space-y-2"><div className="flex justify-between items-end"><div className="flex items-center gap-2"><span className={`font-bold text-sm ${isSelf ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300'}`}>{name} {isSelf && '(You)'}</span></div><div className="text-right"><span className="text-lg font-black text-slate-900 dark:text-white leading-none">{count}</span><span className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Wins</span></div></div><div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-50 dark:border-slate-800/50"><div className={`h-full ${isSelf ? 'bg-indigo-600' : 'bg-slate-400'} transition-all duration-1000`} style={{ width: `${percent}%` }} /></div><div className="flex justify-between"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Support Level</span><span className="text-[10px] font-black text-slate-500">{percent}%</span></div></div>);
+                  return (<div key={name} className="space-y-1.5"><div className="flex justify-between items-end"><div className="flex items-center gap-2"><span className={`font-bold text-xs ${isSelf ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300'}`}>{name} {isSelf && '(You)'}</span></div><div className="text-right"><span className="text-sm font-black text-slate-900 dark:text-white leading-none">{count}</span><span className="text-[9px] font-bold text-slate-400 ml-1 uppercase">Wins</span></div></div><div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-50 dark:border-slate-800/50"><div className={`h-full ${isSelf ? 'bg-indigo-600' : 'bg-slate-400'} transition-all duration-1000`} style={{ width: `${percent}%` }} /></div><div className="flex justify-between"><span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Support Level</span><span className="text-[9px] font-black text-slate-500">{percent}%</span></div></div>);
                })}
             </div>
          </div>
@@ -276,9 +351,9 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
          <div className="space-y-4">
             <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3"><IconStar className="w-6 h-6 text-emerald-500" /> My Referral Insights</h3>
             <ReferralWinsTab
-               appointments={appointments}
+               appointments={allAppointments}
                incentives={allIncentives}
-               users={[currentUser]}
+               users={users}
                payCycles={payCycles}
                referralRate={referralRate}
                currentUser={currentUser}

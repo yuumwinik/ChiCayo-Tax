@@ -26,13 +26,13 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
     const isMainAdmin = currentUser?.role === 'admin';
 
     const referralData = useMemo(() => {
-        // Filter appointments that are activated
-        const partners = appointments.filter(a => !!a.activatedAt);
+        // Filter appointments that are activated by the current user
+        const partners = appointments.filter(a => !!a.activatedAt && a.activatedByUserId === currentUser?.id);
 
         // Match incentives to partners
         return partners.map(p => {
-            const partnerIncentives = incentives.filter(i => i.relatedAppointmentId === p.id);
-            const totalEarned = partnerIncentives.reduce((sum, i) => sum + i.amountCents, 0);
+            const partnerIncentives = incentives.filter(i => i.relatedAppointmentId === p.id && i.label.toLowerCase().includes('activation'));
+            const totalEarned = partnerIncentives.length > 0 ? partnerIncentives.reduce((sum, i) => sum + i.amountCents, 0) : 1000;
 
             // Calculate velocity (days from onboard to activation)
             let velocityDays: number | null = null;
@@ -62,10 +62,18 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
     const stats = useMemo(() => {
         const totalReferrals = referralData.reduce((sum, d) => sum + d.referralCount, 0);
         const totalEarnings = referralData.reduce((sum, d) => sum + d.totalEarned, 0);
-        const avgVelocity = referralData.filter(d => d.velocityDays !== null).reduce((sum, d) => sum + (d.velocityDays || 0), 0) / (referralData.filter(d => d.velocityDays !== null).length || 1);
+        
+        // Use ALL activated appointments for velocity calculation to get better team-wide averages
+        const allActivatedPartners = appointments.filter(a => !!a.activatedAt && a.onboardedAt && a.activatedAt);
+        const avgVelocity = allActivatedPartners.reduce((sum, a) => {
+            const onboardedAt = new Date(a.onboardedAt!).getTime();
+            const activatedAt = new Date(a.activatedAt!).getTime();
+            const days = Math.max(0, Math.floor((activatedAt - onboardedAt) / (1000 * 60 * 60 * 24)));
+            return sum + days;
+        }, 0) / (allActivatedPartners.length || 1);
 
         return { totalReferrals, totalEarnings, avgVelocity: Math.round(avgVelocity) };
-    }, [referralData]);
+    }, [referralData, appointments]);
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -144,7 +152,9 @@ export const ReferralWinsTab: React.FC<ReferralWinsTabProps> = ({
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <span className="text-[10px] text-slate-500 font-bold block">SOURCE</span>
-                                        <span className="text-[10px] font-black uppercase text-slate-900 dark:text-white">{data.onboardType === 'self' ? 'Self Onboard' : 'AE Assisted'}</span>
+                                        <span className="text-[10px] font-black uppercase text-slate-900 dark:text-white">
+                                            {data.onboardType === 'self' ? 'Self Onboard' : data.onboardType === 'transfer' ? 'AE Assisted' : 'Raw / Account Review'}
+                                        </span>
                                     </div>
                                     <div>
                                         <span className="text-[10px] text-slate-500 font-bold block">STATUS</span>

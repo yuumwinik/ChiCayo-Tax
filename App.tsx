@@ -17,8 +17,9 @@ import { TutorialOverlay } from './components/TutorialOverlay';
 import { UserAnalytics } from './components/UserAnalytics';
 import { EducationCenter } from './components/EducationCenter';
 import { RemindersView } from './components/RemindersView';
+import { NotificationPods } from './components/NotificationPods';
 import { IconMenu, IconMoon, IconPlus, IconSearch, IconSun, getAvatarIcon, IconTrash, IconTrophy, IconSparkles, IconTransfer, IconActivity, IconX, IconCheck, IconClock, IconAlertCircle, IconAlertTriangle, IconLayout } from './components/Icons';
-import { NotificationCenter } from './components/NotificationCenter';
+
 import { ReminderModal } from './components/ReminderModal';
 import { calculatePeakTime } from './utils/analyticsUtils';
 import { generateId, formatDate, formatCurrency } from './utils/dateUtils';
@@ -124,9 +125,6 @@ export default function App() {
         commissionActivation,
         refreshData,
         handleUpdateMasterCommissions,
-        handleImportReferrals,
-        handleManualReferralUpdate,
-        handleDeleteReferralEntry,
         handleSaveAppointment,
         handleMoveStage: moveStageInContext,
         handleDeleteAppointment,
@@ -137,6 +135,7 @@ export default function App() {
         performanceStats,
         handleSaveReminder,
         handleDeleteReminder,
+        handleConvertReminderToAppointment,
         reminders
     } = useData();
 
@@ -165,13 +164,21 @@ export default function App() {
     const [isAEModalOpen, setIsAEModalOpen] = useState(false);
     const [pendingMove, setPendingMove] = useState<{ id: string, stage: AppointmentStage } | null>(null);
 
-    const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
-    const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>(() => {
-        const saved = localStorage.getItem('dismissed_notif_ids');
-        return saved ? JSON.parse(saved) : [];
-    });
+    // notification center removed per request
+
+    // conversion helper for reminder modal
+    const handleConvertReminderModal = async (data: Partial<Reminder>, stage: AppointmentStage) => {
+        try {
+            await handleConvertReminderToAppointment(data as Reminder, stage);
+            addToast('Converted to appointment', 'success');
+            setIsReminderModalOpen(false);
+        } catch (err) {
+            addToast(`Error converting reminder: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+        }
+    };
     const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
     const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
+    const [highlightedReminderIdForPulse, setHighlightedReminderIdForPulse] = useState<string | null>(null);
 
     const [referralAlert, setReferralAlert] = useState<{ id: string, count: number, totalCents: number, clientName: string } | null>(null);
     const [seenReferralIds, setSeenReferralIds] = useState<Set<string>>(() => {
@@ -202,13 +209,11 @@ export default function App() {
             setCurrentView(user.role === 'admin' ? 'admin-dashboard' : 'dashboard');
         } else {
             const lastView = sessionStorage.getItem(KEYS.LAST_VIEW) as View;
-            if (lastView) {
-                if (lastView as string === 'training') {
-                    setCurrentView('education');
-                    sessionStorage.setItem(KEYS.LAST_VIEW, 'education');
-                } else {
-                    setCurrentView(lastView);
-                }
+            if (lastView as string === 'training') {
+                setCurrentView('education');
+                sessionStorage.setItem(KEYS.LAST_VIEW, 'education');
+            } else {
+                setCurrentView(lastView);
             }
         }
     }, [user]);
@@ -238,23 +243,80 @@ export default function App() {
     useEffect(() => {
         if (!user || user.role === 'admin') return;
 
-        // Find the most recent referral that hasn't been seen yet
-        const newReferrals = allAppointments.flatMap(a => {
-            if (a.userId !== user.id || !a.referralHistory) return [];
-            return a.referralHistory.map(h => ({ ...h, clientName: a.name }));
-        }).filter(h => !seenReferralIds.has(h.id));
+        const newActivations = allIncentives.filter(i =>
+            i.userId === user.id &&
+            i.label.toLowerCase().includes('activation') &&
+            !seenReferralIds.has(i.id)
+        );
 
-        if (newReferrals.length > 0) {
-            const latest = newReferrals[newReferrals.length - 1]; // Assume last is newest for now
-            // Only set if not already showing one to avoid flickering or loops
+        if (newActivations.length > 0) {
+            const latest = newActivations[newActivations.length - 1];
+            const clientName = latest.label.replace('Partner Activation: ', '') || 'A partner';
+
             setReferralAlert(prev => prev ? prev : {
                 id: latest.id,
-                clientName: latest.clientName,
-                count: latest.count,
-                totalCents: latest.count * referralCommissionRate
+                clientName: clientName,
+                count: 1,
+                totalCents: latest.amountCents
             });
         }
-    }, [allAppointments, user, referralCommissionRate, seenReferralIds]);
+    }, [allIncentives, user, seenReferralIds]);
+
+    useEffect(() => {
+        if (!user || user.role === 'admin') return;
+
+        const checkMilestones = () => {
+            const onboarded = allAppointments.filter(a => a.userId === user.id && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED));
+            const activated = allAppointments.filter(a => a.userId === user.id && (a.stage === AppointmentStage.ACTIVATED || a.stage === AppointmentStage.TRANSFERRED));
+            const selfOnboarded = onboarded.filter(a => !a.aeName || a.aeName === user.name);
+            const lifetimeCents = displayEarnings.lifetime;
+
+            const newAchievements = new Set(achievements);
+            let triggered: any = null;
+
+            if (onboarded.length >= 100 && !achievements.has('100_ONBOARDS')) {
+                triggered = '100_ONBOARDS';
+            } else if (selfOnboarded.length >= 100 && !achievements.has('100_SELF')) {
+                triggered = '100_SELF';
+            } else if (lifetimeCents >= 100000 && !achievements.has('1000_EARNINGS')) {
+                triggered = '1000_EARNINGS';
+            } else if (lifetimeCents >= 50000 && !achievements.has('500_EARNINGS')) {
+                triggered = '500_EARNINGS';
+            } else if (activated.length >= 10 && !achievements.has('ACTIVATION_10')) {
+                triggered = 'ACTIVATION_10';
+            } else if (activated.length >= 5 && !achievements.has('ACTIVATION_5')) {
+                triggered = 'ACTIVATION_5';
+            } else if (activated.length >= 1 && !achievements.has('FIRST_ACTIVATION')) {
+                triggered = 'FIRST_ACTIVATION';
+            }
+
+            if (triggered) {
+                newAchievements.add(triggered);
+                setAchievements(newAchievements);
+                localStorage.setItem('achievements_v2', JSON.stringify([...newAchievements]));
+                setActiveCelebration(triggered);
+            }
+        };
+
+        const checkFridayRecap = () => {
+            const now = new Date();
+            const isFriday = now.getDay() === 5;
+            const isRecapTime = now.getHours() === 16 && now.getMinutes() >= 45;
+
+            if (isFriday && isRecapTime) {
+                const weekKey = `${now.getFullYear()}-W${Math.ceil(now.getDate() / 7)}`;
+                const lastRecap = localStorage.getItem('last_recap_week');
+                if (lastRecap !== weekKey) {
+                    setIsWeeklyRecapOpen(true);
+                    localStorage.setItem('last_recap_week', weekKey);
+                }
+            }
+        };
+
+        checkMilestones();
+        const interval = setInterval(checkFridayRecap, 60000);
+        return () => clearInterval(interval);
+    }, [allAppointments, user, displayEarnings.lifetime, achievements]);
 
     useEffect(() => {
         if (!user || user.role === 'admin') return;
@@ -434,12 +496,13 @@ export default function App() {
     };
 
     if (!user) return <AuthScreen onLogin={async (u) => { setUser(u); refreshData(); }} />;
+    
     const hasApiKey = !!import.meta.env.VITE_GROQ_API_KEY;
 
     return (
         <ErrorBoundary FallbackComponent={ErrorFallback}>
             <div className="h-screen flex bg-slate-50 dark:bg-slate-950 overflow-hidden app-container">
-                {isAdmin && <DeveloperHealthCheck activeCycle={activeCycle} appointments={allAppointments} hasApiKey={hasApiKey} />}
+                {/* Removed Developer Health Check for both agents and admins */}
                 {referralAlert && (
                     <div
                         className="fixed inset-0 z-[300] flex items-center justify-center bg-indigo-950/80 backdrop-blur-md animate-in fade-in duration-500 p-6 cursor-pointer"
@@ -454,9 +517,9 @@ export default function App() {
                                 <div className="w-24 h-24 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce shadow-xl">
                                     <IconTrophy className="w-12 h-12" />
                                 </div>
-                                <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tight">Referral Win!</h2>
+                                <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tight">Activation Win!</h2>
                                 <p className="text-slate-500 dark:text-slate-400 font-bold mb-8">
-                                    Your partner <span className="text-indigo-600 dark:text-indigo-400 font-black">{referralAlert.clientName}</span> just sent business!
+                                    You just activated <span className="text-indigo-600 dark:text-indigo-400 font-black">{referralAlert.clientName}</span>!
                                 </p>
                                 <div className="bg-slate-50 dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 mb-8">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">New Bonus</p>
@@ -472,49 +535,44 @@ export default function App() {
                         </div>
                     </div>
                 )}
-
                 <TutorialOverlay isOpen={!user.hasSeenTutorial || forceTutorial} userRole={user.role} onComplete={async () => { setUser({ ...user, hasSeenTutorial: true }); await supabase.from('users').update({ has_seen_tutorial: true }).eq('id', user.id); setForceTutorial(false); }} />
                 <Sidebar currentView={currentView} onChangeView={v => { setCurrentView(v); sessionStorage.setItem(KEYS.LAST_VIEW, v); }} isOpen={isSidebarOpen} onCloseMobile={() => setIsSidebarOpen(false)} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onLogout={() => setUser(null)} userRole={user.role} userName={user.name} userAvatar={user.avatarId} isTickerVisible={isTickerVisible} onToggleTicker={() => setIsTickerVisible(!isTickerVisible)} />
                 <div className="flex-1 flex flex-col min-w-0" onDragOver={e => e.preventDefault()}>
-                    <header className="h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 sticky top-0 z-40">
-                        <div className="flex items-center gap-4">
-                            <button onClick={() => setIsSidebarOpen(true)} className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl md:hidden hover:scale-105 active:scale-95 transition-all"><IconMenu className="w-5 h-5" /></button>
-                            <div className="relative group hidden md:block">
+                    <header className="h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-3 sm:px-6 sticky top-0 z-40 flex-shrink-0">
+                        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+                            {/* Mobile Menu Button - Always accessible */}
+                            <button 
+                              onClick={() => setIsSidebarOpen(true)} 
+                              className="mobile-menu-btn p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg hover:scale-105 active:scale-95 transition-all flex-shrink-0 lg:hidden" 
+                              title="Open menu"
+                            >
+                              <IconMenu className="w-5 h-5" />
+                            </button>
+                            {/* Search - Hidden on small screens but preserves layout */}
+                            <div className="relative group hidden sm:block flex-1">
                                 <IconSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 group-focus-within:text-indigo-500 transition-colors" />
-                                <input type="text" placeholder="Search partners..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-50 dark:bg-slate-800 border-none rounded-2xl py-2.5 pl-11 pr-4 text-sm font-bold w-64 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-900 dark:text-white" />
+                                <input type="text" placeholder="Search partners..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-50 dark:bg-slate-800 border-none rounded-xl py-2.5 pl-11 pr-8 text-sm font-bold w-full focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-900 dark:text-white" />
+                                {searchQuery && (
+                                    <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                        <IconX className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2 md:gap-4 ml-auto">
-                            <NotificationCenter
-                                appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)}
-                                onOpenAppointment={(id) => {
-                                    const a = allAppointments.find(x => x.id === id);
-                                    if (a) handleOpenBusinessCard(a, [a]);
-                                    setIsNotificationCenterOpen(false);
-                                }}
-                                onClearAll={() => {
-                                    const todayIds = allAppointments.map(a => a.id);
-                                    setDismissedNotifIds(prev => Array.from(new Set([...prev, ...todayIds])));
-                                    setIsNotificationCenterOpen(false);
-                                }}
-                                onClearIndividual={(id) => setDismissedNotifIds(prev => [...prev, id])}
-                                dismissedIds={dismissedNotifIds}
-                                isOpen={isNotificationCenterOpen}
-                                onToggle={() => setIsNotificationCenterOpen(!isNotificationCenterOpen)}
-                            />
-                            <button onClick={() => setDarkMode(!darkMode)} className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl hover:scale-105 active:scale-95 transition-all outline-none">
+                        <div className="flex items-center gap-2 sm:gap-4 ml-auto flex-shrink-0">
+                            <button onClick={() => setDarkMode(!darkMode)} className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg hover:scale-105 active:scale-95 transition-all outline-none" title="Toggle dark mode">
                                 {darkMode ? <IconSun className="w-5 h-5" /> : <IconMoon className="w-5 h-5" />}
                             </button>
-                            <div id="wallet-pill" className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full font-black text-xs hover:scale-105 active:scale-95 transition-all outline-none border border-emerald-100 dark:border-emerald-800 shadow-sm cursor-pointer" onClick={() => setIsEarningsPanelOpen(true)}>{formatCurrency(displayEarnings.current?.totalCents || 0)}</div>
-                            <button onClick={() => setCurrentView('profile')} className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-lg shadow-indigo-100 dark:shadow-none hover:scale-105 active:scale-95 transition-all outline-none overflow-hidden">{user.avatarId && user.avatarId !== 'initial' ? <div className="w-6 h-6">{getAvatarIcon(user.avatarId)}</div> : user.name.charAt(0).toUpperCase()}</button>
+                            <div id="wallet-pill" className="hidden xs:flex items-center gap-2 px-3 sm:px-4 py-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full font-black text-xs sm:text-sm hover:scale-105 active:scale-95 transition-all outline-none border border-emerald-100 dark:border-emerald-800 shadow-sm cursor-pointer whitespace-nowrap" onClick={() => setIsEarningsPanelOpen(true)}>{formatCurrency(displayEarnings.current?.totalCents || 0)}</div>
+                            <button onClick={() => setCurrentView('profile')} className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-lg shadow-indigo-100 dark:shadow-none hover:scale-105 active:scale-95 transition-all outline-none overflow-hidden flex-shrink-0" title="Profile">{user.avatarId && user.avatarId !== 'initial' ? <div className="w-6 h-6">{getAvatarIcon(user.avatarId)}</div> : user.name.charAt(0).toUpperCase()}</button>
                         </div>
                     </header>
 
                     <main className="flex-1 overflow-y-auto no-scrollbar relative">
                         {loadingAuth ? <div className="h-full flex items-center justify-center"><div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>
                             : currentView === 'education' ? <EducationCenter />
-                                : currentView === 'reminders' ? <RemindersView onOpenModal={handleOpenReminderModal} onDeleteReminder={handleDeleteReminderWrapper} onSaveAppointment={handleSaveApptWrapper} />
+                                : currentView === 'reminders' ? <RemindersView onOpenModal={handleOpenReminderModal} onDeleteReminder={handleDeleteReminderWrapper} onSaveAppointment={handleSaveApptWrapper} onConvertReminderToAppointment={handleConvertReminderToAppointment} />
                                     : currentView === 'profile' ? <ProfileView onReplayTutorial={() => setForceTutorial(true)} totalEarnings={displayEarnings.lifetime} totalOnboarded={allAppointments.filter(a => (isAdmin ? true : a.userId === user?.id) && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED)).length} />
                                         : currentView === 'admin-dashboard' ? <AdminDashboard
                                             members={allUsers.map((u: User) => ({
@@ -547,59 +605,107 @@ export default function App() {
                                             referralRate={referralCommissionRate}
                                             activationRate={commissionActivation}
                                         />
-                                            : currentView === 'user-analytics' ? <div className="p-6 max-w-6xl mx-auto"><UserAnalytics appointments={allAppointments.filter(a => a.userId === user?.id)} allAppointments={allAppointments} allIncentives={allIncentives} earnings={displayEarnings} activeCycle={activeCycle} payCycles={payCycles} currentUserName={user?.name || ''} currentUser={user!} referralRate={referralCommissionRate} onViewAppt={handleOpenBusinessCard} /></div>
+                                            : currentView === 'user-analytics' ? <div className="p-6 max-w-6xl mx-auto"><UserAnalytics appointments={allAppointments.filter(a => a.userId === user?.id)} allAppointments={allAppointments} allIncentives={allIncentives} earnings={displayEarnings} activeCycle={activeCycle} payCycles={payCycles} currentUserName={user?.name || ''} currentUser={user!} referralRate={referralCommissionRate} users={allUsers} onViewAppt={handleOpenBusinessCard} /></div>
                                                 : currentView === 'calendar' ? <div className="p-6 max-w-6xl mx-auto"><CalendarView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, isAdmin ? allAppointments : allAppointments.filter(item => item.userId === user?.id))} userRole={user?.role || 'agent'} users={allUsers} activeCycle={activeCycle} /></div>
                                                     : currentView === 'onboarded' ? <div className="p-6 max-w-6xl mx-auto"><OnboardedView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} searchQuery={searchQuery} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={(a, stack) => handleOpenBusinessCard(a, stack)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} users={allUsers} payCycles={payCycles} userRole={user?.role || 'agent'} currentWindow={displayEarnings.current} referralRate={referralCommissionRate} incentives={allIncentives} /></div>
                                                         : currentView === 'earnings-full' ? <div className="p-6 max-w-6xl mx-auto"><EarningsFullView history={displayEarnings.history} currentWindow={displayEarnings.current} appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} users={allUsers} userRole={user?.role || 'agent'} currentUserName={user?.name || ''} onDismissCycle={id => supabase.from('users').update({ dismissed_cycle_ids: [...(user?.dismissedCycleIds || []), id] }).eq('id', user?.id).then(() => refreshData())} incentives={allIncentives} referralRate={referralCommissionRate} /></div>
                                                             : (
                                                                 <div className="relative p-6 pt-20 min-h-full">
                                                                     <div className="fixed top-24 right-8 z-30 pointer-events-none">
-                                                                        <button onClick={() => { setEditingAppt(null); if (isAdmin) setIsCreateModalOpen(true); else setIsModalOpen(true); }} className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-lg transition-all active:scale-95 text-sm font-black uppercase tracking-widest shadow-indigo-100/50 dark:shadow-none"><IconPlus className="w-5 h-5" /> {isAdmin ? 'Log Onboarded Partner' : 'New Appointment'}</button>
+                                                                        <button onClick={() => { setEditingAppt(null); setIsModalOpen(true); }} className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-lg transition-all active:scale-95 text-sm font-black uppercase tracking-widest shadow-indigo-100/50 dark:shadow-none"><IconPlus className="w-5 h-5" /> New Appointment</button>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start pb-8">
+                                                                        {isAdmin ?
+                                                                            // Admin view: Only show ONBOARDED and ACTIVATED stages
+                                                                            [AppointmentStage.ONBOARDED, AppointmentStage.ACTIVATED].map(stage => {
+                                                                                const searchLower = searchQuery.toLowerCase();
+                                                                                const items = allAppointments.filter(a => {
+                                                                                    if (stage === AppointmentStage.ONBOARDED) {
+                                                                                        if (a.stage !== AppointmentStage.ONBOARDED && a.stage !== AppointmentStage.ACTIVATED) return false;
+                                                                                    } else {
+                                                                                        if (a.stage !== stage) return false;
+                                                                                    }
+                                                                                    if (stage === AppointmentStage.ONBOARDED || stage === AppointmentStage.ACTIVATED) {
+                                                                                        if (activeCycle && !searchQuery) {
+                                                                                            const start = new Date(activeCycle.startDate).getTime();
+                                                                                            const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
+                                                                                            const onboarded = new Date(a.onboardedAt || a.scheduledAt).getTime();
+                                                                                            if (onboarded < start || onboarded > end) return false;
+                                                                                        }
+                                                                                    }
+                                                                                    if (searchQuery) {
+                                                                                        const matches = a.name.toLowerCase().includes(searchLower) || (a.phone && a.phone.includes(searchLower)) || (a.email && a.email.toLowerCase().includes(searchLower)) || (a.notes && a.notes.toLowerCase().includes(searchLower)) || (a.aeName && a.aeName.toLowerCase().includes(searchLower)) || formatDate(a.scheduledAt).toLowerCase().includes(searchLower);
+                                                                                        if (!matches) return false;
+                                                                                    }
+                                                                                    return true;
+                                                                                });
+                                                                                const sortedItems = [...items].sort((a, b) => {
+                                                                                    const tA = new Date(a.scheduledAt).getTime();
+                                                                                    const tB = new Date(b.scheduledAt).getTime();
+                                                                                    return (stage === AppointmentStage.ONBOARDED || stage === AppointmentStage.ACTIVATED) ? tB - tA : tA - tB;
+                                                                                });
+
+                                                                                // Hide Cycle Onboard and Activated if empty
+                                                                                if ((stage === AppointmentStage.ONBOARDED || stage === AppointmentStage.ACTIVATED) && sortedItems.length === 0) return null;
+
+                                                                                if (sortedItems.length === 0 && stage !== AppointmentStage.ONBOARDED) return null;
+
+                                                                                return (
+                                                                                    <div key={stage} className="flex flex-col gap-4 animate-in fade-in" onDragOver={e => e.preventDefault()} onDrop={() => draggedId && handleMoveStage(draggedId, stage)}>
+                                                                                        <div className="flex justify-between px-1"><h3 className="font-bold text-slate-500 uppercase text-[10px] tracking-widest">{stage === AppointmentStage.ONBOARDED ? 'Active Cycle Wins' : stage === AppointmentStage.ACTIVATED ? 'Activated Partners' : STAGE_LABELS[stage]}</h3><span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-bold">{sortedItems.length}</span></div>
+                                                                                        {stage === AppointmentStage.TRANSFERRED && (<div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-1 animate-pulse flex items-center gap-2"><div className="p-1 bg-indigo-600 text-white rounded-lg"><IconTransfer className="w-3.5 h-3.5" /></div><span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">LIVE WAITING ONBOARD</span></div>)}
+                                                                                        <CardStack<Appointment> threshold={stage === AppointmentStage.ACTIVATED ? 2 : 4} items={sortedItems} renderItem={appt => (<div onDragStart={() => setDraggedId(appt.id)} onDragEnd={() => { setDraggedId(null); setIsOverDeleteZone(false); }} draggable><AppointmentCard appointment={appt} onMoveStage={handleMoveStage} onEdit={(a, res) => { setEditingAppt(a); setIsRescheduling(!!res); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, sortedItems)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} agentName={isAdmin ? allUsers.find(u => u.id === appt.userId)?.name : undefined} preferredDialer={user.preferredDialer} referralRate={referralCommissionRate} allUsers={allUsers} incentives={allIncentives} isAdmin={isAdmin} /></div>)} />
+                                                                                    </div>
+                                                                                );
+                                                                            })
+                                                                            // Agent view: Show all stages as before
+                                                                            : [AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, AppointmentStage.ACTIVATED, ...((user?.showFailedSection ?? true) ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
+                                                                                const searchLower = searchQuery.toLowerCase();
+                                                                                const items = allAppointments.filter(a => a.userId === user?.id).filter(a => {
+                                                                                    if (stage === AppointmentStage.ONBOARDED) {
+                                                                                        if (a.stage !== AppointmentStage.ONBOARDED && a.stage !== AppointmentStage.ACTIVATED) return false;
+                                                                                    } else {
+                                                                                        if (a.stage !== stage) return false;
+                                                                                    }
+                                                                                    if (stage === AppointmentStage.ONBOARDED || stage === AppointmentStage.ACTIVATED) {
+                                                                                        if (activeCycle && !searchQuery) {
+                                                                                            const start = new Date(activeCycle.startDate).getTime();
+                                                                                            const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
+                                                                                            const onboarded = new Date(a.onboardedAt || a.scheduledAt).getTime();
+                                                                                            if (onboarded < start || onboarded > end) return false;
+                                                                                        }
+                                                                                    }
+                                                                                    if (searchQuery) {
+                                                                                        const matches = a.name.toLowerCase().includes(searchLower) || (a.phone && a.phone.includes(searchLower)) || (a.email && a.email.toLowerCase().includes(searchLower)) || (a.notes && a.notes.toLowerCase().includes(searchLower)) || (a.aeName && a.aeName.toLowerCase().includes(searchLower)) || formatDate(a.scheduledAt).toLowerCase().includes(searchLower);
+                                                                                        if (!matches) return false;
+                                                                                    }
+                                                                                    return true;
+                                                                                });
+                                                                                const sortedItems = [...items].sort((a, b) => {
+                                                                                    const tA = new Date(a.scheduledAt).getTime();
+                                                                                    const tB = new Date(b.scheduledAt).getTime();
+                                                                                    return (stage === AppointmentStage.ONBOARDED || stage === AppointmentStage.ACTIVATED) ? tB - tA : tA - tB;
+                                                                                });
+
+                                                                                // Hide Cycle Onboard and Activated if empty
+                                                                                if ((stage === AppointmentStage.ONBOARDED || stage === AppointmentStage.ACTIVATED) && sortedItems.length === 0) return null;
+
+                                                                                if (sortedItems.length === 0 && stage !== AppointmentStage.ONBOARDED) return null;
+
+                                                                                return (
+                                                                                    <div key={stage} className="flex flex-col gap-4 animate-in fade-in" onDragOver={e => e.preventDefault()} onDrop={() => draggedId && handleMoveStage(draggedId, stage)}>
+                                                                                        <div className="flex justify-between px-1"><h3 className="font-bold text-slate-500 uppercase text-[10px] tracking-widest">{stage === AppointmentStage.ONBOARDED ? 'Active Cycle Wins' : stage === AppointmentStage.ACTIVATED ? 'Activated Partners' : STAGE_LABELS[stage]}</h3><span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-bold">{sortedItems.length}</span></div>
+                                                                                        {stage === AppointmentStage.TRANSFERRED && (<div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-1 animate-pulse flex items-center gap-2"><div className="p-1 bg-indigo-600 text-white rounded-lg"><IconTransfer className="w-3.5 h-3.5" /></div><span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">LIVE WAITING ONBOARD</span></div>)}
+                                                                                        <CardStack<Appointment> threshold={stage === AppointmentStage.ACTIVATED ? 2 : 4} items={sortedItems} renderItem={appt => (<div onDragStart={() => setDraggedId(appt.id)} onDragEnd={() => { setDraggedId(null); setIsOverDeleteZone(false); }} draggable><AppointmentCard appointment={appt} onMoveStage={handleMoveStage} onEdit={(a, res) => { setEditingAppt(a); setIsRescheduling(!!res); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, sortedItems)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} agentName={isAdmin ? allUsers.find(u => u.id === appt.userId)?.name : undefined} preferredDialer={user.preferredDialer} referralRate={referralCommissionRate} allUsers={allUsers} incentives={allIncentives} isAdmin={isAdmin} /></div>)} />
+                                                                                    </div>
+                                                                                );
+                                                                            })}
                                                                     </div>
 
-                                                                    <ReferralMomentumWidget appointments={allAppointments} activeCycle={activeCycle} onViewAppt={a => handleOpenBusinessCard(a)} referralRate={referralCommissionRate} users={allUsers} />
-
-                                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start pb-40">
-                                                                        {[AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, ...((user?.showFailedSection ?? true) ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
-                                                                            const searchLower = searchQuery.toLowerCase();
-                                                                            const items = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)).filter(a => {
-                                                                                if (stage === AppointmentStage.ONBOARDED) {
-                                                                                    if (a.stage !== AppointmentStage.ONBOARDED && a.stage !== AppointmentStage.ACTIVATED) return false;
-                                                                                } else {
-                                                                                    if (a.stage !== stage) return false;
-                                                                                }
-                                                                                if (stage === AppointmentStage.ONBOARDED && activeCycle) {
-                                                                                    const start = new Date(activeCycle.startDate).getTime();
-                                                                                    const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
-                                                                                    const onboarded = new Date(a.onboardedAt || a.scheduledAt).getTime();
-                                                                                    if (onboarded < start || onboarded > end) return false;
-                                                                                }
-                                                                                if (searchQuery) {
-                                                                                    const matches = a.name.toLowerCase().includes(searchLower) || (a.phone && a.phone.includes(searchLower)) || (a.email && a.email.toLowerCase().includes(searchLower)) || (a.notes && a.notes.toLowerCase().includes(searchLower)) || (a.aeName && a.aeName.toLowerCase().includes(searchLower)) || formatDate(a.scheduledAt).toLowerCase().includes(searchLower);
-                                                                                    if (!matches) return false;
-                                                                                }
-                                                                                return true;
-                                                                            });
-                                                                            const sortedItems = [...items].sort((a, b) => {
-                                                                                const tA = new Date(a.scheduledAt).getTime();
-                                                                                const tB = new Date(b.scheduledAt).getTime();
-                                                                                return stage === AppointmentStage.ONBOARDED ? tB - tA : tA - tB;
-                                                                            });
-
-                                                                            // Hide Cycle Onboard if empty
-                                                                            if (stage === AppointmentStage.ONBOARDED && sortedItems.length === 0) return null;
-
-                                                                            if (sortedItems.length === 0 && stage !== AppointmentStage.ONBOARDED) return null;
-
-                                                                            return (
-                                                                                <div key={stage} className="flex flex-col gap-4 animate-in fade-in" onDragOver={e => e.preventDefault()} onDrop={() => draggedId && handleMoveStage(draggedId, stage)}>
-                                                                                    <div className="flex justify-between px-1"><h3 className="font-bold text-slate-500 uppercase text-[10px] tracking-widest">{stage === AppointmentStage.ONBOARDED ? 'Active Cycle Wins' : STAGE_LABELS[stage]}</h3><span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-bold">{sortedItems.length}</span></div>
-                                                                                    {stage === AppointmentStage.TRANSFERRED && (<div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-1 animate-pulse flex items-center gap-2"><div className="p-1 bg-indigo-600 text-white rounded-lg"><IconTransfer className="w-3.5 h-3.5" /></div><span className="text-[9px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">LIVE WAITING ONBOARD</span></div>)}
-                                                                                    <CardStack<Appointment> items={sortedItems} renderItem={appt => (<div onDragStart={() => setDraggedId(appt.id)} onDragEnd={() => { setDraggedId(null); setIsOverDeleteZone(false); }} draggable><AppointmentCard appointment={appt} onMoveStage={handleMoveStage} onEdit={(a, res) => { setEditingAppt(a); setIsRescheduling(!!res); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, sortedItems)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} agentName={isAdmin ? allUsers.find(u => u.id === appt.userId)?.name : undefined} preferredDialer={user.preferredDialer} referralRate={referralCommissionRate} allUsers={allUsers} incentives={allIncentives} /></div>)} />
-                                                                                </div>
-                                                                            );
-                                                                        })}
+                                                                    <div className="pb-40">
+                                                                        <ReferralMomentumWidget appointments={allAppointments} activeCycle={activeCycle} onViewAppt={a => handleOpenBusinessCard(a)} users={allUsers} allIncentives={allIncentives} />
                                                                     </div>
+
                                                                     {allAppointments.length === 0 && (
                                                                         <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-700">
                                                                             <div className="w-32 h-32 bg-slate-50 dark:bg-slate-800 rounded-[3rem] flex items-center justify-center mb-8"><IconCheck className="w-16 h-16 text-slate-200" /></div>
@@ -631,10 +737,9 @@ export default function App() {
                 </ErrorBoundary>
                 <DeleteConfirmationModal isOpen={deleteConfirmation.isOpen} onClose={() => setDeleteConfirmation({ isOpen: false, id: null })} onConfirm={() => handleDeleteAppointment(deleteConfirmation.id!).then(() => setDeleteConfirmation({ isOpen: false, id: null }))} title="Confirm Removal" message="Permanently delete this item?" />
                 <AESelectionModal isOpen={isAEModalOpen} onClose={() => setIsAEModalOpen(false)} agentName={user?.name} onConfirm={ae => { if (pendingMove) { handleMoveStage(pendingMove.id, pendingMove.stage, false).then(() => { supabase.from('appointments').update({ ae_name: ae }).eq('id', pendingMove.id).then(() => { setPendingMove(null); refreshData(); }); }); } }} />
-                <EarningsPanel isOpen={isEarningsPanelOpen} onClose={() => setIsEarningsPanelOpen(false)} onViewAll={() => { setIsEarningsPanelOpen(false); setCurrentView('earnings-full'); }} currentWindow={displayEarnings.current} history={displayEarnings.history} lifetimeEarnings={displayEarnings.lifetime} teamEarnings={isAdmin ? displayEarnings.lifetime : undefined} teamCurrentPool={isAdmin ? teamCurrentCycleTotal : undefined} isTeamView={isAdmin} referralRate={referralCommissionRate} allAppointments={allAppointments} />
-                <ErrorBoundary FallbackComponent={ErrorFallback}>
-                    <TaxterChat user={user} allAppointments={allAppointments} allEarnings={displayEarnings.history} payCycles={payCycles} allUsers={allUsers} onNavigate={setCurrentView} activeCycle={activeCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralCommissionRate={referralCommissionRate} reminders={reminders} />
-                </ErrorBoundary>
+                <EarningsPanel isOpen={isEarningsPanelOpen} onClose={() => setIsEarningsPanelOpen(false)} onViewAll={() => { setIsEarningsPanelOpen(false); setCurrentView('earnings-full'); }} currentWindow={displayEarnings.current} history={displayEarnings.history} lifetimeEarnings={displayEarnings.lifetime} teamEarnings={isAdmin ? displayEarnings.lifetime : undefined} teamCurrentPool={isAdmin ? teamCurrentCycleTotal : undefined} isTeamView={isAdmin} referralRate={referralCommissionRate} allAppointments={allAppointments} allIncentives={allIncentives} currentUserName={user.name} />
+
+                <TaxterChat user={user} allAppointments={allAppointments} allEarnings={displayEarnings.history} payCycles={payCycles} allUsers={allUsers} onNavigate={setCurrentView} activeCycle={activeCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralCommissionRate={referralCommissionRate} reminders={reminders} />
 
                 <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] flex flex-col-reverse gap-3 pointer-events-none items-center">
                     {toasts.map(t => (
@@ -666,10 +771,11 @@ export default function App() {
                     isOpen={isReminderModalOpen}
                     onClose={() => setIsReminderModalOpen(false)}
                     onSave={handleSaveReminderWrapper}
+                    onConvert={handleConvertReminderModal}
                     editingReminder={editingReminder}
                 />
                 <div className="fixed bottom-1 right-1 text-[10px] text-slate-300 dark:text-slate-700 opacity-50 z-[9999] pointer-events-none font-mono">v1.1.0</div>
-            </div >
+            </div>
         </ErrorBoundary>
     );
 }

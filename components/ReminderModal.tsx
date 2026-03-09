@@ -1,24 +1,27 @@
 
 import React, { useState, useEffect } from 'react';
-import { Reminder } from '../types';
-import { IconPlus, IconX, IconCalendar } from './Icons';
+import { Reminder, AppointmentStage } from '../types';
+import { IconPlus, IconX, IconCalendar, IconCheck, IconTransfer, IconActivity } from './Icons';
 import { CustomDatePicker } from './CustomDatePicker';
 import { CustomSelect } from './CustomSelect';
 import { US_TIMEZONES, getTimeZoneFromPhone, dateFromClientTime } from '../utils/timeZoneData';
+import { generateId } from '../utils/dateUtils';
 
 interface ReminderModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSave: (data: Partial<Reminder>) => Promise<void>;
+    onConvert?: (data: Partial<Reminder>, stage: AppointmentStage) => Promise<void>;
     editingReminder: Reminder | null;
 }
 
-export const ReminderModal: React.FC<ReminderModalProps> = ({ isOpen, onClose, onSave, editingReminder }) => {
+export const ReminderModal: React.FC<ReminderModalProps> = ({ isOpen, onClose, onSave, onConvert, editingReminder }) => {
     const [formData, setFormData] = useState<Partial<Reminder>>({
         name: '',
         phone: '',
         email: '',
-        notes: ''
+        notes: '',
+        isPendingActivation: false
     });
 
     // Scheduler State
@@ -46,7 +49,7 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({ isOpen, onClose, o
                 setTimeMinute(d.getMinutes().toString().padStart(2, '0'));
                 setTimeAmPm(ampm);
             } else {
-                setFormData({ name: '', phone: '', email: '', notes: '' });
+                setFormData({ name: '', phone: '', email: '', notes: '', isPendingActivation: false });
                 setDate(new Date().toLocaleDateString('en-CA'));
                 setTimeHour('9');
                 setTimeMinute('00');
@@ -82,6 +85,17 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({ isOpen, onClose, o
         onClose();
     };
 
+    const handleConvert = async (stage: AppointmentStage) => {
+        if (!onConvert) return;
+        let hourInt = parseInt(timeHour);
+        if (timeAmPm === 'PM' && hourInt !== 12) hourInt += 12;
+        if (timeAmPm === 'AM' && hourInt === 12) hourInt = 0;
+        const timeStr = `${hourInt.toString().padStart(2, '0')}:${timeMinute.padStart(2, '0')}`;
+        const isoDate = dateFromClientTime(date, timeStr, timeZone).toISOString();
+        await onConvert({ ...formData, callBackAt: isoDate, id: editingReminder?.id || generateId() }, stage);
+        onClose();
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -95,7 +109,7 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({ isOpen, onClose, o
                     </div>
                     <div>
                         <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">
-                            {editingReminder ? 'Update Reminder' : 'Log Local Reminder'}
+                            {editingReminder ? 'Update Reminder' : 'Log a Reminder'}
                         </h2>
                         <p className="text-xs text-slate-500 font-medium">Quick log for account review or callback requests.</p>
                     </div>
@@ -172,6 +186,17 @@ export const ReminderModal: React.FC<ReminderModalProps> = ({ isOpen, onClose, o
                             className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl py-4 px-6 text-slate-900 dark:text-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-bold resize-none"
                             placeholder="What needs to happen?"
                         />
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl">
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Pending Activation</span>
+                        <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, isPendingActivation: !formData.isPendingActivation })}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.isPendingActivation ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                        >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.isPendingActivation ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
                     </div>
 
                     <button

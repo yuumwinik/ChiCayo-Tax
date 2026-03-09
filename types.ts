@@ -72,6 +72,7 @@ export interface Reminder {
   callBackAt: string; // ISO string
   notes?: string;
   createdAt: string;
+  isPendingActivation?: boolean;
 }
 
 export interface Appointment {
@@ -97,6 +98,11 @@ export interface Appointment {
   originalUserId?: string;
   originalOnboardType?: 'self' | 'transfer';
   originalAeName?: string;
+  // indicates how this appointment was created when stage==ACTIVATED
+  // 'onboard' means it was logged as a new onboard and then activated,
+  // 'activation' means it was directly created via the activation log form,
+  // 'transfer' comes from a transfer button
+  loggedMode?: 'onboard' | 'activation' | 'transfer';
 }
 
 export interface Incentive {

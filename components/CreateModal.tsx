@@ -27,6 +27,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({
 }) => {
   const [isSelfOnboard, setIsSelfOnboard] = useState(false);
   const [targetUserId, setTargetUserId] = useState('');
+  const [logMode, setLogMode] = useState<'onboard' | 'activation'>('onboard');
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -40,6 +41,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({
     if (isOpen) {
       setIsSelfOnboard(false);
       setTargetUserId('');
+      setLogMode('onboard');
       setFormData({
         name: '',
         phone: '',
@@ -77,8 +79,9 @@ export const CreateModal: React.FC<CreateModalProps> = ({
     onSubmit({
       ...formData,
       scheduledAt,
-      stage: AppointmentStage.ONBOARDED,
-      targetUserId: targetUserId || undefined
+      stage: logMode === 'activation' ? AppointmentStage.ACTIVATED : AppointmentStage.ONBOARDED,
+      targetUserId: targetUserId || undefined,
+      logMode
     });
     onClose();
   };
@@ -98,7 +101,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({
               <IconSparkles className="w-5 h-5" />
             </div>
             <h2 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">
-              Log Onboarded Partner
+              {logMode === 'onboard' ? 'Log Onboarded Partner' : 'Log Activated Partner'}
             </h2>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-400">
@@ -167,15 +170,30 @@ export const CreateModal: React.FC<CreateModalProps> = ({
                 </h3>
 
                 {/* SELF-ONBOARD TOGGLE */}
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SELF-ONBOARD</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsSelfOnboard(!isSelfOnboard)}
-                    className={`relative w-12 h-6 rounded-full transition-all duration-300 ${isSelfOnboard ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
-                  >
-                    <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow-sm transition-transform ${isSelfOnboard ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </button>
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SELF-ONBOARD</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsSelfOnboard(!isSelfOnboard)}
+                      className={`relative w-12 h-6 rounded-full transition-all duration-300 ${isSelfOnboard ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-700'}`}
+                    >
+                      <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow-sm transition-transform ${isSelfOnboard ? 'translate-x-6' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {/* Mode selector */}
+                  <div className="flex items-center gap-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">LOG</label>
+                    <select
+                      value={logMode}
+                      onChange={e => setLogMode(e.target.value as 'onboard' | 'activation')}
+                      className="px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-950 border-none text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="onboard">Onboard</option>
+                      <option value="activation">Activation</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -225,7 +243,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({
             type="submit"
             className="w-full mt-12 py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3 uppercase tracking-widest text-sm"
           >
-            <IconSparkles className="w-5 h-5" /> Log Onboarded Partner
+            <IconSparkles className="w-5 h-5" /> {logMode === 'onboard' ? 'Log Onboarded Partner' : 'Log Activated Partner'}
           </button>
         </form>
       </div>

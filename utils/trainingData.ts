@@ -203,5 +203,131 @@ export const TRAINING_CONTENT = {
         { name: "Drake Software", url: "drake.community.tax/signUp" },
         { name: "EPS", url: "eps.community.tax" },
         { name: "Direct Partners", url: "partners.community.tax" }
-    ]
+    ],
+    partnershipMatrix: [
+        {
+            partner: "SBTPG",
+            integrationType: "Banking Platform",
+            referralMethod: "Yellow 'Send Referral Now' button in portal",
+            commission: "10% of Resolution Revenue + $150 per back-tax year",
+            description: "Direct platform integration for seamless client referrals"
+        },
+        {
+            partner: "Drake Software",
+            integrationType: "Prep Software",
+            referralMethod: "drake.community.tax - Client retention (Community Tax does not do prep)",
+            commission: "Refund Advantage Revenue Share model",
+            description: "Tax prep integration allowing referrals without prep conflicts"
+        },
+        {
+            partner: "Refund Advantage",
+            integrationType: "Banking + Service",
+            referralMethod: "Integrated Dashboard",
+            commission: "12.5% Revenue Share (Paid as payments are received)",
+            description: "Full banking and service integration partnership"
+        },
+        {
+            partner: "Direct Partner",
+            integrationType: "Independent ERO",
+            referralMethod: "partners.community.tax",
+            commission: "$400 Total ($150 Investigation / $250 Resolution)",
+            description: "Direct independent partnership program"
+        }
+    ],
+    resolutionProcess: {
+        step1: {
+            title: "Investigation (2 Weeks)",
+            phase: "Fact-Finding Mission",
+            activities: [
+                "Pull IRS & State transcripts",
+                "Analyze debt history and patterns",
+                "Conduct comprehensive financial interview",
+                "Identify enforcement threats (liens, levies, garnishments)"
+            ],
+            outcome: "Resolution Strategy Call with client"
+        },
+        step2: {
+            title: "Resolution/Representation",
+            phase: "Community Tax takes over all IRS/State communication",
+            activities: [
+                "Negotiate Offer in Compromise (OIC)",
+                "Set up Installment Agreements",
+                "File Penalty Abatement requests",
+                "Handle tax lien releases and priority tax debt"
+            ],
+            outcome: "Client brought into compliance and enforcement protection"
+        }
+    },
+    uiCards: {
+        golden_question: {
+            headline: "The Referral Trigger",
+            trigger_question: "Are you going to be able to pay this debt off in full?",
+            when_to_use: "When client owes $7,000+",
+            action: "Click the Referral button in your TPG/Drake portal for a Free Consultation",
+            callout: "This is THE conversion point - use it when debt is significant."
+        },
+        why_partner: {
+            headline: "Keep Your Clients, Get Paid",
+            benefits: [
+                "100% Non-Compete: We don't do tax prep. We send them back to you.",
+                "Passive Income: Earn up to $400 or 12.5% revenue share per case.",
+                "CE Credits: Access monthly webinars for free Continuing Education credits.",
+                "Full-Service: You focus on prep; we stop levies, garnishments, and liens."
+            ]
+        },
+        pricing_transparency: {
+            headline: "What does the client pay?",
+            investigation_fee: {
+                standard: "$499",
+                partner_discount: "$349 (20% partner client discount)",
+                what_it_covers: "Transcript analysis, financial interview, debt assessment"
+            },
+            resolution_fee: {
+                type: "Flat fee quoted during Strategy Call",
+                basis: "Based on investigation findings and complexity",
+                payment_terms: "Structured around client cash flow"
+            }
+        }
+    },
+    aiCallFlow: {
+        phase1_activation_hook: {
+            title: "Phase 1: The 'Hook' (Moving to Activation)",
+            goal: "Move from 'Onboarded' to 'Activated' by securing first referral",
+            script: "I see you opted in through [Drake/TPG], but haven't sent a referral yet. Activation happens once you send that first client over—who comes to mind that owes $7,000+?",
+            key_insight: "Activation = First successful referral placement"
+        },
+        phase2_uncertainty_handling: {
+            title: "Phase 2: Handling Uncertainty",
+            scenario: "Partner sounds unsure about ROI or process",
+            pivot_strategy: "The Value Add Pivot",
+            script: "Think of us as your Full-Service Resolution Department. You focus on prep; we stop the wage garnishments and levies. You stay the trusted advisor, and we handle the IRS drama.",
+            key_insight: "Position as a capability, not a cost"
+        },
+        phase3_webinar_close: {
+            title: "Phase 3: The Monthly Webinar Close",
+            goal: "Always end interactions with education value",
+            script: "Before I let you go, I wanted to mention we host free CE-accredited webinars every month. It's a great way to stay current on tax debt resolution trends. Would you like me to add you to the calendar?",
+            upcoming_schedule: [
+                { date: "3/12/2026", topic: "Breaking the Tax Debt Cycle", credits: "1 CE" },
+                { date: "4/9/2026", topic: "Federal Tax Liens Unlocked", credits: "1 CE" },
+                { date: "5/14/2026", topic: "Bank Levies & Wage Garnishments", credits: "1 CE" },
+                { date: "6/11/2026", topic: "Due Process & Collection Appeals", credits: "1 CE" }
+            ]
+        }
+    },
+    competitiveIntelligence: {
+        activation_trends: {
+            same_day_onboard_activate: "Shows aggressive follow-up and conversion",
+            transfer_to_activate: "Demonstrates relationship ownership across pipeline",
+            spontaneous_activation: "New client acquisition from external source",
+            dominated_activation: "Client with history of onboard/transfer by another user being activated by current user"
+        },
+        what_agents_see_on_record_match: {
+            match_type_1: "Original Onboarder: '[Agent Name] onboarded this client [X days/cycles ago]'",
+            match_type_2: "Transfer History: '[Agent Name] transferred to [AE Name] for onboarding on [Date]'",
+            match_type_3: "Multi-Stage: 'Originally onboarded by [Agent A] → Transferred to [AE B] → Now activating'",
+            match_type_4: "Timeline: 'Days from initial contact to activation: [X days] | Pay cycles elapsed: [X]'",
+            competitive_note: "This shows 'ownership momentum' - great for agent motivation and team transparency"
+        }
+    }
 };

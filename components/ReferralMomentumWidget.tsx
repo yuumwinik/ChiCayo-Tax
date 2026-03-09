@@ -7,8 +7,9 @@ interface ReferralMomentumWidgetProps {
     appointments: Appointment[];
     activeCycle: PayCycle | null;
     onViewAppt: (appt: Appointment) => void;
-    referralRate: number;
+    referralRate?: number;
     users: User[];
+    allIncentives: any[];
 }
 
 export const ReferralMomentumWidget: React.FC<ReferralMomentumWidgetProps> = ({
@@ -16,28 +17,30 @@ export const ReferralMomentumWidget: React.FC<ReferralMomentumWidgetProps> = ({
     activeCycle,
     onViewAppt,
     referralRate,
-    users
+    users,
+    allIncentives
 }) => {
     const activeReferrals = useMemo(() => {
-        if (!activeCycle) return [];
-        const start = new Date(activeCycle.startDate).getTime();
-        const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
+        if (!activeCycle || !allIncentives) return [];
+
+        const cycleIncentives = allIncentives.filter(i =>
+            i.appliedCycleId === activeCycle.id &&
+            i.label.toLowerCase().includes('activation') &&
+            i.relatedAppointmentId
+        );
 
         return appointments
-            .filter(a => a.referralHistory && a.referralHistory.some(h => {
-                const date = new Date(h.date).getTime();
-                return date >= start && date <= end;
-            }))
+            .filter(a => cycleIncentives.some(i => i.relatedAppointmentId === a.id))
             .map(a => {
-                const recentHistory = a.referralHistory!.filter(h => {
-                    const date = new Date(h.date).getTime();
-                    return date >= start && date <= end;
-                });
-                const cycleCount = recentHistory.reduce((s, h) => s + h.count, 0);
-                return { ...a, cycleCount };
+                const partnerIncentives = cycleIncentives.filter(i => i.relatedAppointmentId === a.id);
+                const cycleCount = partnerIncentives.length;
+                const cycleBonus = partnerIncentives.reduce((sum, i) => sum + i.amountCents, 0);
+                return { ...a, cycleCount, cycleBonus };
             })
-            .sort((a, b) => new Date(b.lastReferralAt || 0).getTime() - new Date(a.lastReferralAt || 0).getTime());
-    }, [appointments, activeCycle]);
+            .sort((a, b) => b.cycleBonus - a.cycleBonus);
+    }, [appointments, activeCycle, allIncentives]);
+
+    const totalActivations = useMemo(() => activeReferrals.reduce((sum, r) => sum + (r.cycleCount || 0), 0), [activeReferrals]);
 
     if (activeReferrals.length === 0) return null;
 
@@ -45,16 +48,16 @@ export const ReferralMomentumWidget: React.FC<ReferralMomentumWidgetProps> = ({
         <div className="mb-8 animate-in slide-in-from-top-4 duration-700">
             <div className="flex items-center justify-between mb-4 px-2">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-xl">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-xl">
                         <IconSparkles className="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Active Cycle Referral Momentum</h3>
+                        <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Active Cycle Activation Momentum</h3>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Production wins driven by partners</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800">
-                    {activeReferrals.length} PARTNERS ACTIVE
+                <div className="flex items-center gap-2 text-[10px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full border border-blue-100 dark:border-blue-800">
+                    {activeReferrals.length} partners / {totalActivations} activations
                 </div>
             </div>
 
@@ -63,18 +66,24 @@ export const ReferralMomentumWidget: React.FC<ReferralMomentumWidgetProps> = ({
                     <div
                         key={partner.id}
                         onClick={() => onViewAppt(partner)}
-                        className="flex-shrink-0 w-80 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border-2 border-rose-100 dark:border-rose-900/30 hover:border-rose-300 dark:hover:border-rose-700 transition-all cursor-pointer group relative overflow-hidden shadow-sm hover:shadow-xl"
+                        className="flex-shrink-0 w-80 bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border-2 border-blue-100 dark:border-blue-900/30 hover:border-blue-300 dark:hover:border-blue-700 transition-all cursor-pointer group relative overflow-hidden shadow-sm hover:shadow-xl"
                     >
                         {/* Background Decoration */}
                         <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform">
-                            <IconTrophy className="w-20 h-20 text-rose-600" />
+                            <IconTrophy className="w-20 h-20 text-blue-600" />
                         </div>
 
                         <div className="relative z-10">
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-2xl flex items-center justify-center text-xl font-black border border-rose-100 dark:border-rose-800">
-                                        {partner.name.charAt(0)}
+                                    <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-2xl flex items-center justify-center text-xl font-black border border-blue-100 dark:border-blue-800">
+                                        {users.find(u => u.id === partner.userId)?.avatarId ? (
+                                            <div className="w-full h-full rounded-2xl overflow-hidden text-slate-900 dark:text-white">
+                                                {getAvatarIcon(users.find(u => u.id === partner.userId)!.avatarId!)}
+                                            </div>
+                                        ) : (
+                                            partner.name.charAt(0)
+                                        )}
                                     </div>
                                     <div>
                                         <h4 className="font-black text-slate-900 dark:text-white uppercase tracking-tight truncate w-32">{partner.name}</h4>
@@ -82,18 +91,17 @@ export const ReferralMomentumWidget: React.FC<ReferralMomentumWidgetProps> = ({
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <div className="text-lg font-black text-rose-600 tabular-nums">+{partner.cycleCount}</div>
-                                    <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Received</div>
+                                    <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-2 border border-blue-200 dark:border-blue-800 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/20">ACTIVATED</div>
                                 </div>
                             </div>
 
-                            <div className="bg-rose-50 dark:bg-rose-900/20 p-4 rounded-2xl border border-rose-100 dark:border-rose-800 mb-4">
+                            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-800 mb-4">
                                 <div className="flex justify-between items-center mb-1">
-                                    <span className="text-[9px] font-black text-rose-700 dark:text-rose-400 uppercase">Cycle Bonus Generated</span>
-                                    <span className="text-[9px] font-black text-emerald-600">{formatCurrency(partner.cycleCount * referralRate)}</span>
+                                    <span className="text-[9px] font-black text-blue-700 dark:text-blue-400 uppercase">Cycle Bonus Generated</span>
+                                    <span className="text-[9px] font-black text-emerald-600">{formatCurrency(partner.cycleBonus)}</span>
                                 </div>
-                                <div className="h-1.5 w-full bg-rose-100 dark:bg-rose-900/50 rounded-full overflow-hidden">
-                                    <div className="h-full bg-rose-500 animate-pulse" style={{ width: `${Math.min(100, (partner.cycleCount / 5) * 100)}%` }} />
+                                <div className="h-1.5 w-full bg-blue-100 dark:bg-blue-900/50 rounded-full overflow-hidden">
+                                    <div className="h-full bg-blue-500" style={{ width: `100%` }} />
                                 </div>
                             </div>
 
@@ -104,7 +112,7 @@ export const ReferralMomentumWidget: React.FC<ReferralMomentumWidgetProps> = ({
                                     </div>
                                     <span className="text-[10px] font-bold text-slate-500">{users.find(u => u.id === partner.userId)?.name}</span>
                                 </div>
-                                <div className="flex items-center gap-1 text-[9px] font-black text-rose-600 uppercase tracking-widest group-hover:translate-x-1 transition-transform">
+                                <div className="flex items-center gap-1 text-[9px] font-black text-blue-600 uppercase tracking-widest group-hover:translate-x-1 transition-transform">
                                     Partner Details <IconArrowRight className="w-3 h-3" />
                                 </div>
                             </div>

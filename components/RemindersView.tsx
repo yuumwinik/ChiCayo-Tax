@@ -10,9 +10,10 @@ interface RemindersViewProps {
     onOpenModal: (reminder?: Reminder) => void;
     onDeleteReminder: (id: string) => Promise<void>;
     onSaveAppointment: (data: any) => Promise<void>;
+    onConvertReminderToAppointment: (reminder: Reminder, stage: AppointmentStage) => Promise<void>;
 }
 
-export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal, onDeleteReminder, onSaveAppointment }) => {
+export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal, onDeleteReminder, onSaveAppointment, onConvertReminderToAppointment }) => {
     const { reminders, refreshData } = useData();
     const { user } = useUser();
     const [searchQuery, setSearchQuery] = useState('');
@@ -96,7 +97,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal, onDel
                             reminder={reminder}
                             onEdit={() => onOpenModal(reminder)}
                             onDelete={() => setDeleteConfirmId(reminder.id)}
-                            onConvert={convertToAppointment}
+                            onConvert={onConvertReminderToAppointment}
                         />
                     ))}
                 </div>
@@ -168,7 +169,12 @@ const ReminderCard = ({ reminder, onEdit, onDelete, onConvert }: {
         <div className={`group bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 border-b-4 transition-all hover:translate-y-[-4px] shadow-sm hover:shadow-xl ${isPastDue ? 'border-rose-500 shadow-rose-100 dark:shadow-none' : 'border-indigo-600 shadow-indigo-100 dark:shadow-none'}`}>
             <div className="flex justify-between items-start mb-6">
                 <div className="flex flex-col gap-1">
-                    <h3 onClick={(e) => copyToClipboard(reminder.name, 'name', e)} className={`text-xl font-black truncate max-w-[150px] cursor-pointer transition-colors ${copiedName ? 'text-emerald-500' : 'text-slate-900 dark:text-white hover:text-indigo-600'}`}>{reminder.name}</h3>
+                    <div className="flex items-center gap-2 mb-1">
+                        <h3 onClick={(e) => copyToClipboard(reminder.name, 'name', e)} className={`text-xl font-black truncate max-w-[150px] cursor-pointer transition-colors ${copiedName ? 'text-emerald-500' : 'text-slate-900 dark:text-white hover:text-indigo-600'}`}>{reminder.name}</h3>
+                        {reminder.isPendingActivation && (
+                            <span className="px-2.5 py-1 bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 rounded-full text-[8px] font-black uppercase tracking-widest whitespace-nowrap shadow-sm border border-rose-200 dark:border-rose-800">🔥 Hot Lead</span>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
                         <IconCalendar className="w-3.5 h-3.5" />
                         {formatDate(reminder.callBackAt)}
@@ -218,10 +224,9 @@ const ReminderCard = ({ reminder, onEdit, onDelete, onConvert }: {
                 >
                     <IconCheck className="w-3 h-3" /> Onboard
                 </button>
-                <div className="flex gap-1">
+                {reminder.isPendingActivation && (
                     <button onClick={() => onConvert(reminder, AppointmentStage.TRANSFERRED)} className="p-3 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 rounded-xl hover:bg-purple-200 transition-all active:scale-95" title="Transfer"><IconTransfer className="w-4 h-4" /></button>
-                    <button onClick={() => onConvert(reminder, AppointmentStage.ACTIVATED)} className="p-3 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 rounded-xl hover:bg-amber-200 transition-all active:scale-95" title="Activate"><IconActivity className="w-4 h-4" /></button>
-                </div>
+                )}
             </div>
         </div>
     );

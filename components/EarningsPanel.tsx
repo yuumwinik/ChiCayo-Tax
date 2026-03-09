@@ -19,10 +19,12 @@ interface EarningsPanelProps {
    lifetimeEarnings?: number;
    referralRate?: number;
    allAppointments?: Appointment[];
+   allIncentives?: any[];
+   currentUserName?: string;
 }
 
 export const EarningsPanel: React.FC<EarningsPanelProps> = ({
-   currentWindow, history, isOpen, onClose, onViewAll, title, isTeamView, teamEarnings = 0, teamCurrentPool = 0, activeCycleLabel, lifetimeEarnings = 0, referralRate = 500, allAppointments = []
+   currentWindow, history, isOpen, onClose, onViewAll, title, isTeamView, teamEarnings = 0, teamCurrentPool = 0, activeCycleLabel, lifetimeEarnings = 0, referralRate = 500, allAppointments = [], allIncentives = [], currentUserName
 }) => {
 
    const calculateProgress = (window: EarningWindow) => {
@@ -34,24 +36,41 @@ export const EarningsPanel: React.FC<EarningsPanelProps> = ({
       return Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
    };
 
-   const currentReferralMetrics = useMemo(() => {
-      if (!currentWindow || !allAppointments.length) return null;
-      const start = new Date(currentWindow.startDate).getTime();
-      const end = new Date(currentWindow.endDate).setHours(23, 59, 59, 999);
+   // card styling logic based on earnings thresholds
+   const cardGradient = useMemo(() => {
+      if (isTeamView) {
+         return 'from-violet-600 via-indigo-600 to-indigo-800 dark:from-violet-800 dark:via-indigo-800 dark:to-slate-900';
+      }
+      const cents = lifetimeEarnings || 0;
+      if (cents >= 100000) {
+         // over $1k
+         return 'from-black via-blue-900 to-yellow-500 dark:from-black dark:via-blue-800 dark:to-yellow-400';
+      } else if (cents >= 50000) {
+         // over $500
+         return 'from-emerald-500 via-teal-500 to-emerald-600 dark:from-emerald-800 dark:via-teal-800 dark:to-emerald-900';
+      }
+      return 'from-violet-600 via-indigo-600 to-indigo-800 dark:from-violet-800 dark:via-indigo-800 dark:to-slate-900';
+   }, [isTeamView, lifetimeEarnings]);
 
-      const cycleOnboarded = allAppointments.filter(a => {
-         const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
-         return a.stage === AppointmentStage.ONBOARDED && d >= start && d <= end;
-      });
+   const cardHolder = isTeamView ? 'TEAM ADMIN' : (currentUserName || 'AUTHORIZED AGENT');
 
-      const totalRefs = cycleOnboarded.reduce((s, a) => s + (a.referralCount || 0), 0);
-      if (totalRefs === 0) return null;
+   const currentActivationMetrics = useMemo(() => {
+      if (!currentWindow || !allIncentives.length) return null;
+
+      const cycleIncentives = allIncentives.filter(i =>
+         i.appliedCycleId === currentWindow.id &&
+         i.label.toLowerCase().includes('activation')
+      );
+
+      if (cycleIncentives.length === 0) return null;
+
+      const totalRevenue = cycleIncentives.reduce((sum, i) => sum + i.amountCents, 0);
 
       return {
-         count: totalRefs,
-         revenue: totalRefs * referralRate
+         count: cycleIncentives.length,
+         revenue: totalRevenue
       };
-   }, [currentWindow, allAppointments, referralRate]);
+   }, [currentWindow, allIncentives]);
 
    return (
       <div className={`fixed inset-y-0 right-0 z-[100] w-full sm:w-96 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-l border-slate-200 dark:border-slate-800 shadow-2xl transform transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
@@ -68,11 +87,11 @@ export const EarningsPanel: React.FC<EarningsPanelProps> = ({
 
             <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar flex flex-col bg-slate-50/50 dark:bg-slate-950/50">
                <section className="animate-in fade-in slide-in-from-top-4 duration-500">
-                  <div className="w-full aspect-[1.586] rounded-3xl bg-gradient-to-br from-violet-600 via-indigo-600 to-indigo-800 dark:from-violet-800 dark:via-indigo-800 dark:to-slate-900 p-6 relative overflow-hidden shadow-2xl shadow-indigo-200/50 dark:shadow-none group transition-transform hover:scale-[1.02]">
+                  <div className={`w-full aspect-[1.586] rounded-3xl bg-gradient-to-br ${cardGradient} p-6 relative overflow-hidden shadow-2xl shadow-indigo-200/50 dark:shadow-none group transition-transform hover:scale-[1.02]`}>
                      <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl transform translate-x-10 -translate-y-10 group-hover:translate-x-8 transition-transform duration-700"></div>
                      <div className="relative z-10 flex flex-col justify-between h-full text-white">
                         <div className="flex justify-between items-start">
-                           <div className="flex items-center gap-2 opacity-90"><div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm"><IconLogo className="w-5 h-5 text-white" /></div><span className="font-bold tracking-wide text-sm">Community Tax Card</span></div>
+                           <div className="flex items-center gap-2 opacity-90"><div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm"><IconLogo className="w-5 h-5 text-white" /></div><span className="font-bold tracking-wide text-sm">ChiCayo Tax Card</span></div>
                            <div className="text-[10px] font-mono opacity-60 tracking-widest uppercase">Lifetime Access</div>
                         </div>
                         <div className="my-auto">
@@ -80,7 +99,7 @@ export const EarningsPanel: React.FC<EarningsPanelProps> = ({
                            <div className="text-4xl font-bold tracking-tight text-white drop-shadow-sm">{formatCurrency(isTeamView ? teamEarnings : lifetimeEarnings)}</div>
                         </div>
                         <div className="flex justify-between items-end">
-                           <div className="flex flex-col"><span className="text-[10px] text-indigo-200 uppercase tracking-widest mb-0.5">Card Holder</span><span className="font-medium tracking-wide text-sm">{isTeamView ? 'TEAM ADMIN' : 'AUTHORIZED AGENT'}</span></div>
+                           <div className="flex flex-col"><span className="text-[10px] text-indigo-200 uppercase tracking-widest mb-0.5">Card Holder</span><span className="font-medium tracking-wide text-sm">{cardHolder}</span></div>
                            <div className="w-10 h-8 rounded bg-gradient-to-br from-yellow-200 to-yellow-500 opacity-80 shadow-inner border border-yellow-600/30 flex items-center justify-center"><div className="w-full h-[1px] bg-black/10 my-0.5"></div></div>
                         </div>
                      </div>
@@ -113,16 +132,16 @@ export const EarningsPanel: React.FC<EarningsPanelProps> = ({
                         ) : <div className="p-5 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl text-center"><p className="text-slate-500 text-sm font-medium">No active cycle found.</p></div>}
                      </section>
 
-                     {/* CONDITIONAL REFERRAL BREAKDOWN AREA */}
-                     {currentReferralMetrics && (
+                     {/* CONDITIONAL ACTIVATION BREAKDOWN AREA */}
+                     {currentActivationMetrics && (
                         <section className="animate-in fade-in slide-in-from-right-4 duration-700 delay-200">
-                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1 flex items-center gap-2"><IconTrendingUp className="w-3 h-3 text-rose-500" /> Referral Earnings</h3>
-                           <div className="bg-rose-50 dark:bg-rose-900/10 rounded-2xl p-5 border border-rose-100 dark:border-rose-900/30 flex items-center justify-between">
+                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1 flex items-center gap-2"><IconTrendingUp className="w-3 h-3 text-emerald-500" /> Activation Earnings</h3>
+                           <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl p-5 border border-emerald-100 dark:border-emerald-900/30 flex items-center justify-between">
                               <div>
-                                 <div className="text-xl font-black text-rose-600 dark:text-rose-400">+{formatCurrency(currentReferralMetrics.revenue)}</div>
-                                 <div className="text-[10px] font-bold text-slate-500 uppercase">From {currentReferralMetrics.count} referrals</div>
+                                 <div className="text-xl font-black text-emerald-600 dark:text-emerald-400">+{formatCurrency(currentActivationMetrics.revenue)}</div>
+                                 <div className="text-[10px] font-bold text-slate-500 uppercase">From {currentActivationMetrics.count} activations</div>
                               </div>
-                              <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-rose-500"><IconUsers className="w-6 h-6" /></div>
+                              <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-emerald-500"><IconUsers className="w-6 h-6" /></div>
                            </div>
                         </section>
                      )}

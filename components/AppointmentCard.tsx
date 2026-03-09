@@ -17,9 +17,10 @@ interface AppointmentCardProps {
   referralRate: number;
   allUsers?: User[];
   incentives?: any[];
+  isAdmin?: boolean;
 }
 
-export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, onMoveStage, onEdit, onView, onDelete, agentName, agentAvatar, preferredDialer, referralRate, allUsers, incentives = [] }) => {
+export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, onMoveStage, onEdit, onView, onDelete, agentName, agentAvatar, preferredDialer, referralRate, allUsers, incentives = [], isAdmin = false }) => {
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [copiedName, setCopiedName] = useState(false);
@@ -209,74 +210,99 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
         </div>
       )}
 
-      <div className="flex gap-2 mt-auto pt-2 border-t border-slate-100 dark:border-slate-700/50 relative z-10">
+      <div className="flex gap-1.5 mt-auto pt-2 border-t border-slate-100 dark:border-slate-700/50 relative z-10 flex-wrap">
+        {/* TRANSFERRED: Confirm Onboard */}
         {appointment.stage === AppointmentStage.TRANSFERRED ? (
-          <div className="flex items-center gap-1.5 w-full">
+          <>
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.NO_SHOW); }}
-              title="Failed to Show (Move to No Show)"
-              className="w-10 h-10 flex items-center justify-center rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50 relative z-40"
+              title="Failed to Show"
+              className="p-2 flex items-center justify-center rounded-lg text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50 relative z-40 w-10 h-10 flex-shrink-0"
             >
               <IconAlertCircle className="w-4 h-4" />
             </button>
-            <button onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED); }} className="flex-1 py-2 px-2 h-10 text-[10px] font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors flex items-center justify-center gap-1 relative z-40"><IconCheck className="w-3 h-3" /> Confirm Onboard</button>
-          </div>
+            <button 
+              onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED); }} 
+              className="flex-1 min-h-10 px-2 text-[10px] font-bold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors flex items-center justify-center gap-1 relative z-40 whitespace-nowrap"
+            >
+              <IconCheck className="w-3 h-3" />
+              <span className="hidden xs:inline">Confirm</span>
+            </button>
+          </>
         ) : (appointment.stage === AppointmentStage.PENDING || appointment.stage === AppointmentStage.RESCHEDULED) ? (
-          <div className="flex items-center justify-between w-full gap-1.5">
+          /* PENDING/RESCHEDULED: All action buttons */
+          <>
+            {/* Fail Button */}
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.NO_SHOW); }}
-              title="Failed to Show (Move to No Show)"
-              className="w-10 h-10 flex items-center justify-center rounded-xl text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50 relative z-40"
+              title="Failed to Show"
+              className="p-2 flex items-center justify-center rounded-lg text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50 relative z-40 w-10 h-10 flex-shrink-0"
             >
               <IconAlertCircle className="w-4 h-4" />
             </button>
+            
+            {/* Reschedule Button */}
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(appointment, true); }}
               title="Reschedule"
-              className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-600 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 transition-all active:scale-90 relative z-40"
+              className="p-2 flex items-center justify-center rounded-lg text-slate-600 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 transition-all active:scale-90 relative z-40 w-10 h-10 flex-shrink-0"
             >
               <IconClock className="w-4 h-4" />
             </button>
+            
+            {/* Self-Onboard Button */}
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED, true); }}
               title="Direct Self-Onboard"
-              className="flex-1 h-10 flex items-center justify-center gap-2 rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-sm relative z-40"
+              className="flex-1 min-h-10 px-2 min-w-max rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-sm relative z-40 flex items-center justify-center gap-1 whitespace-nowrap"
             >
-              <IconCheck className="w-4 h-4" /> Onboard
+              <IconCheck className="w-4 h-4" />
+              <span className="hidden xs:inline sm:hidden">On</span>
+              <span className="hidden sm:inline">Onboard</span>
             </button>
+            
+            {/* Transfer Button */}
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED, false); }}
               title="Transfer to AE"
-              className="flex-1 h-10 flex items-center justify-center gap-2 rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-indigo-200 dark:shadow-none relative z-40"
+              className="flex-1 min-h-10 px-2 min-w-max rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-indigo-200 dark:shadow-none relative z-40 flex items-center justify-center gap-1 whitespace-nowrap"
             >
-              <IconTransfer className="w-4 h-4" /> Transfer
+              <IconTransfer className="w-4 h-4" />
+              <span className="hidden xs:inline sm:hidden">X-fer</span>
+              <span className="hidden sm:inline">Transfer</span>
             </button>
-          </div>
+          </>
         ) : appointment.stage === AppointmentStage.ONBOARDED ? (
-          <div className="flex flex-col gap-2 w-full pt-1">
+          /* ONBOARDED: Activation and Status */
+          <>
             {!appointment.activatedAt && (
               <button
                 onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ACTIVATED); }}
-                className="w-full py-1 flex items-center justify-center gap-1.5 rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[8px] uppercase tracking-widest transition-all active:scale-95 border border-emerald-200/50 dark:border-emerald-800/50"
+                className="w-full min-h-10 py-1 flex items-center justify-center gap-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all active:scale-95 border border-emerald-200/50 dark:border-emerald-800/50"
               >
-                <IconRocket className="w-2.5 h-2.5" /> Log Activation
+                <IconRocket className="w-3 h-3" />
+                <span className="hidden xs:inline">Activate</span>
+                <span className="inline xs:hidden">Act</span>
               </button>
             )}
-            <div className="flex justify-between items-center text-[10px] text-slate-400">
-              <div className="flex items-center gap-1.5">
+            <div className="flex justify-between items-center text-[9px] sm:text-[10px] text-slate-400 w-full">
+              <div className="flex items-center gap-1">
                 {appointment.activatedAt ? (
                   <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold uppercase">
-                    <IconCheck className="w-3 h-3" /> Activated
+                    <IconCheck className="w-3 h-3" />
+                    <span className="hidden xs:inline">Activated</span>
+                    <span className="inline xs:hidden">✓</span>
                   </span>
                 ) : (
-                  <span className="uppercase font-medium">Awaiting Activation</span>
+                  <span className="uppercase font-medium">Pending</span>
                 )}
               </div>
-              <span className="font-bold text-emerald-500">+{formatCurrency(totalPayout)}</span>
+              <span className="font-bold text-emerald-500 whitespace-nowrap ml-1">+{formatCurrency(totalPayout)}</span>
             </div>
-          </div>
+          </>
         ) : (
-          <div className="w-full flex justify-center items-center gap-2 text-[10px] text-slate-400 py-2">
+          /* OTHER STAGES: Show stage label */
+          <div className="w-full flex justify-center items-center gap-2 text-[9px] sm:text-[10px] text-slate-400 py-1">
             <span>{STAGE_LABELS[appointment.stage]}</span>
           </div>
         )}

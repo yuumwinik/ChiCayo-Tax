@@ -55,6 +55,7 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
     const referralCount = appointment.referralCount || 0;
 
     const isOnboarded = stage === AppointmentStage.ONBOARDED;
+    const isActivated = stage === AppointmentStage.ACTIVATED;
     const isTransferQueue = stage === AppointmentStage.TRANSFERRED;
     const isActionable = stage === AppointmentStage.PENDING || stage === AppointmentStage.RESCHEDULED;
 
@@ -73,10 +74,15 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
             <div className="relative z-[1010] bg-white dark:bg-slate-900 w-full h-[90vh] md:h-auto md:max-h-[85vh] md:max-w-4xl overflow-hidden flex flex-col md:flex-row border-0 md:border border-white/20 md:rounded-[2.5rem] shadow-2xl animate-in zoom-in-95 duration-300">
                 <button onClick={onClose} className="absolute top-5 right-5 z-40 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-50 dark:bg-slate-800 rounded-full transition-colors border border-slate-100 dark:border-slate-700 shadow-sm"><IconX className="w-5 h-5" /></button>
 
-                <div className={`w-full md:w-5/12 p-8 flex flex-col items-center text-center bg-slate-50 dark:bg-slate-800/30 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 transition-colors duration-500 ${isOnboarded ? 'bg-emerald-50/30 dark:bg-emerald-900/10' : ''}`}>
-                    <div className="relative mb-6 flex items-center gap-4">
+                <div className={`w-full md:w-5/12 p-8 flex flex-col items-center text-center bg-slate-50 dark:bg-slate-800/30 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 transition-colors duration-500 relative overflow-hidden ${isOnboarded ? 'bg-emerald-50/30 dark:bg-emerald-900/10' : isActivated ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
+                    {(isOnboarded || isActivated) && (
+                        <div className={`absolute top-0 left-0 right-0 py-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-white shadow-md z-[1011] ${isActivated ? 'bg-blue-600' : 'bg-emerald-600'}`}>
+                            {isActivated ? 'Activated Partner' : 'Onboarded Partner'}
+                        </div>
+                    )}
+                    <div className="relative mb-6 flex items-center gap-4 mt-4">
                         <button disabled={!hasPrev} onClick={onPrev} className={`p-2 rounded-full transition-all ${hasPrev ? 'opacity-30 hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700' : 'opacity-0'}`}><IconChevronLeft className="w-6 h-6" /></button>
-                        <div className="relative"><div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center text-3xl font-black border-4 border-white dark:border-slate-800 shadow-xl transition-all ${isOnboarded ? 'bg-emerald-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>{(name.trim() || '?').charAt(0).toUpperCase()}</div></div>
+                        <div className="relative"><div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center text-3xl font-black border-4 border-white dark:border-slate-800 shadow-xl transition-all ${isActivated ? 'bg-blue-600 text-white' : isOnboarded ? 'bg-emerald-600 text-white' : 'bg-indigo-100 text-indigo-600'}`}>{(name.trim() || '?').charAt(0).toUpperCase()}</div></div>
                         <button disabled={!hasNext} onClick={onNext} className={`p-2 rounded-full transition-all ${hasNext ? 'opacity-30 hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-700' : 'opacity-0'}`}><IconChevronRight className="w-6 h-6" /></button>
                     </div>
 
@@ -93,11 +99,11 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                         </div>
                     </div>
 
-                    {isOnboarded && (
-                        <div className="w-full bg-emerald-600 p-5 rounded-3xl shadow-xl text-white text-left overflow-hidden relative group mt-4">
+                    {(isOnboarded || isActivated) && (
+                        <div className={`w-full p-5 rounded-3xl shadow-xl text-white text-left overflow-hidden relative group mt-4 ${isActivated ? 'bg-blue-600' : 'bg-emerald-600'}`}>
                             <div className="relative z-10">
                                 <div className="text-[10px] font-black uppercase opacity-70 mb-1">Production Earned</div>
-                                <div className="text-3xl font-black mb-3">{formatCurrency(earnedAmount)}</div>
+                                <div className="text-3xl font-black mb-3">{formatCurrency(earnedAmount + (isActivated ? 1000 : 0))}</div>
                                 <div className="text-[9px] font-bold uppercase bg-white/20 px-2 py-1 rounded-lg w-fit">Closer: {aeName}</div>
                             </div>
                             <IconTrophy className="absolute -bottom-2 -right-2 w-16 h-16 text-white/10 group-hover:scale-110 transition-transform" />
@@ -124,7 +130,7 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                         <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 group transition-all hover:border-blue-200 relative">
                             <div className="flex items-center gap-2 mb-2"><IconMail className="w-3.5 h-3.5 text-blue-500" /><span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Email</span></div>
                             <div className="flex items-center justify-between">
-                                <ProtocolModal type="email" value={email} templatePath={isOnboarded ? "Files/Welcome to the Community Tax – SBTPG Referral Program.oft" : undefined}>{(trigger) => <button onClick={trigger} className="text-xs font-black text-slate-900 dark:text-white hover:text-blue-600 truncate block max-w-[120px]">{email}</button>}</ProtocolModal>
+                                <ProtocolModal type="email" value={email} templatePath={isOnboarded ? "Files/Welcome to the Community Tax – SBTPG Referral Program.oft" : undefined}>{(trigger) => <button onClick={trigger} className="text-xs font-black text-slate-900 dark:text-white hover:text-blue-600 truncate block max-w-[100px] sm:max-w-[180px]">{email}</button>}</ProtocolModal>
                                 <button onClick={() => copyToClipboard(email, 'email')} className={`p-1.5 rounded-lg transition-all ${copiedEmail ? 'bg-emerald-100 text-emerald-600' : 'text-slate-300 hover:text-blue-600 hover:bg-white'}`}><IconCopy className="w-3.5 h-3.5" /></button>
                             </div>
                         </div>

@@ -1,9 +1,8 @@
 
 import React, { useState } from 'react';
 import { IconSparkles, IconSend, IconUsers, IconTrophy, IconCheck, IconTrash, IconClock, IconTimer, IconActivity, IconBot, IconBonusMachine, IconDollarSign } from '../Icons';
-import { GoogleGenAI, Type } from "@google/genai";
 import { TeamMember, PayCycle, IncentiveRule } from '../../types';
-import { formatCurrency } from '../../utils/dateUtils';
+import { formatCurrency, generateId } from '../../utils/dateUtils';
 
 interface IncentiveBuilderProps {
   onApply: (rule: Partial<IncentiveRule>) => void;
@@ -17,50 +16,59 @@ export const IncentiveBuilder: React.FC<IncentiveBuilderProps> = ({ onApply, onD
   const [selfPrompt, setSelfPrompt] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
+  const parseIncentiveRule = (prompt: string): Partial<IncentiveRule> | null => {
+    // Pattern: "Next X team onboards get $Y extra"
+    const upForGrabs = prompt.match(/next \d+|give \d+/i);
+    const teamMatch = prompt.match(/team|everyone|all agents/i);
+    const dollarMatch = prompt.match(/\$(\d+(?:\.\d{2})?)|for \$(\d+(?:\.\d{2})?)/i);
+    const targetCountMatch = prompt.match(/(\d+)\s*(?:team|onboards|deals|agents)/i);
+    
+    if (!dollarMatch) {
+      alert('Please include a dollar amount (e.g., "$2 extra", "for $5")');
+      return null;
+    }
+    
+    const dollars = parseFloat((dollarMatch[1] || dollarMatch[2]) || '0');
+    const cents = Math.round(dollars * 100);
+    const targetCount = targetCountMatch ? parseInt(targetCountMatch[1]) : 5;
+    
+    // Determine rule type
+    let type: 'one_time' | 'per_deal' | 'up_for_grabs' = 'up_for_grabs';
+    if (prompt.toLowerCase().includes('pizza') || prompt.toLowerCase().includes('bonus') || prompt.toLowerCase().includes('give')) {
+      type = 'one_time';
+    } else if (prompt.toLowerCase().includes('every') || prompt.toLowerCase().includes('rush')) {
+      type = 'per_deal';
+    }
+    
+    const rule: Partial<IncentiveRule> = {
+      id: generateId(),
+      userId: teamMatch ? 'team' : members[0]?.id || 'team',
+      type,
+      valueCents: cents,
+      label: prompt.substring(0, 50).trim(),
+      startTime: new Date().toISOString(),
+      endTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      targetCount: type === 'up_for_grabs' ? targetCount : undefined,
+      currentCount: 0
+    };
+    
+    return rule;
+  };
+  
   const processIncentive = async () => {
     if (!selfPrompt.trim() || isProcessing) return;
     setIsProcessing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: selfPrompt,
-        config: {
-          systemInstruction: `You are the Achievement Engine for Community Tax. Parse the admin's request into a structured rule.
-          MEMBERS: ${members.map(m => `${m.name} (id:${m.id})`).join(', ')}. 
-          
-          Rule Types:
-          1. 'one_time': Immediate cash payout.
-          2. 'per_deal': Extra $ bonus for EVERY deal in a timeframe or specific agent (Rush Hour).
-          3. 'up_for_grabs': Team Challenge pool. A limited number of bonuses available for anyone (e.g., "The next 5 onboards are $8"). Set 'targetCount' for the limit.
-          
-          Parsing advanced timing:
-          - If "Monday", "Next cycle", or "8pm" is mentioned, set ISO startTime/endTime appropriately.
-          
-          Output JSON schema only.`,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              userId: { type: Type.STRING, description: 'Member ID or "team"' },
-              type: { type: Type.STRING, enum: ['one_time', 'per_deal', 'up_for_grabs'] },
-              valueCents: { type: Type.NUMBER, description: 'Bonus amount in cents' },
-              label: { type: Type.STRING, description: 'Catchy name' },
-              startTime: { type: Type.STRING, description: 'ISO date' },
-              endTime: { type: Type.STRING, description: 'ISO date' },
-              targetCount: { type: Type.NUMBER, description: 'Limit for up_for_grabs' }
-            },
-            required: ['userId', 'type', 'valueCents', 'label']
-          }
-        },
-      });
-
-      const result = JSON.parse(response.text);
-      onApply(result);
-      setSelfPrompt('');
+      await new Promise(resolve => setTimeout(resolve, 300)); // Simulate processing
+      
+      const parsed = parseIncentiveRule(selfPrompt);
+      if (parsed) {
+        onApply(parsed);
+        setSelfPrompt('');
+      }
     } catch (e) {
       console.error(e);
-      alert('Calibration error. Try: "Next 5 team onboards get $2 extra"');
+      alert('Error parsing rule. Try: "Next 5 team onboards get $2 extra"');
     } finally {
       setIsProcessing(false);
     }
