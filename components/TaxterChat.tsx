@@ -205,53 +205,46 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     const onboardedPartners = relevantAppointments
       .filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
 
-    // CURRENT CYCLE TRACKING
-    let currentCycleTotal = 0;
-    let currentCycleDeals = 0;
-    let currentCycleActivations = 0;
+    // GRANULAR ACCOUNTING
+    let cycleOnboardCents = 0;
+    let cycleActivationCents = 0;
+    let cycleOnboardCount = 0;
+    let cycleTransferCount = 0;
+    let cycleSelfCount = 0;
+    let cycleActivationCount = 0;
     
     if (activeCycle) {
       const s = new Date(activeCycle.startDate).getTime();
       const e = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
       
+      // 1. Process Onboards in this cycle
       onboardedPartners.forEach(a => {
         const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
         if (d >= s && d <= e) {
           const agent = allUsers.find(u => u.id === a.userId);
-          const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
-          currentCycleTotal += (a.earnedAmount || defaultRate);
-          currentCycleDeals++;
-          if (a.stage === AppointmentStage.ACTIVATED) currentCycleActivations++;
+          const isSelf = (a.aeName === agent?.name);
+          const amt = a.earnedAmount || (isSelf ? selfCommissionRate : commissionRate);
+          
+          cycleOnboardCents += amt;
+          cycleOnboardCount++;
+          if (isSelf) cycleSelfCount++; else cycleTransferCount++;
         }
       });
 
-      // Add activation incentives for current cycle
-      const cycleInc = allIncentives.filter(i => 
+      // 2. Process Activations (Incentives) strictly tied to this cycle
+      const cycleActivations = allIncentives.filter(i => 
         (user.role === 'admin' ? true : i.userId === user.id) && 
         i.appliedCycleId === activeCycle.id && 
         (i.label || '').toLowerCase().includes('activat')
       );
-      currentCycleTotal += cycleInc.reduce((s, i) => s + i.amountCents, 0);
+      cycleActivationCents = cycleActivations.reduce((sum, i) => sum + i.amountCents, 0);
+      cycleActivationCount = cycleActivations.length;
     }
 
-    // UPCOMING SUMMARY
-    const upcoming = relevantAppointments
-      .filter(a => {
-         const d = new Date(a.scheduledAt).getTime();
-         return d > nowTimestamp && (a.stage === AppointmentStage.PENDING || a.stage === AppointmentStage.RESCHEDULED);
-      })
-      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
-
-    // CYCLE HISTORY
-    const cycleHistory = allEarnings.map(win => ({
-      label: `${formatDate(win.startDate)} - ${formatDate(win.endDate)}`,
-      total: formatCurrency(win.totalCents),
-      count: win.onboardedCount,
-      isClosed: win.isClosed
-    }));
-
-    const lifetimeEarnings = onboardedPartners.reduce((sum, a) => sum + (a.earnedAmount || 0), 0) + 
-      allIncentives.filter(i => (user.role === 'admin' ? true : i.userId === user.id)).reduce((s, i) => s + i.amountCents, 0);
+    const currentTotalCents = cycleOnboardCents + cycleActivationCents;
+    const lifetimeIncentives = allIncentives.filter(i => (user.role === 'admin' ? true : i.userId === user.id)).reduce((s, i) => s + i.amountCents, 0);
+    const lifetimeOnboardCents = onboardedPartners.reduce((sum, a) => sum + (a.earnedAmount || 0), 0);
+    const lifetimeTotalCents = lifetimeOnboardCents + lifetimeIncentives;
 
     const daysElapsed = Math.max(1, Math.floor((nowTimestamp - (activeCycle ? new Date(activeCycle.startDate).getTime() : nowTimestamp)) / (1000 * 60 * 60 * 24)));
     const totalDays = activeCycle ? Math.ceil((new Date(activeCycle.endDate).getTime() - new Date(activeCycle.startDate).getTime()) / (1000 * 60 * 60 * 24)) : 1;
@@ -264,20 +257,28 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       } : null,
       accounting: {
         currentCycle: {
-          earnings: formatCurrency(currentCycleTotal),
-          onboardCount: currentCycleDeals,
-          activationCount: currentCycleActivations,
-          projected: formatCurrency(Math.round((currentCycleTotal / daysElapsed) * totalDays))
+          total: formatCurrency(currentTotalCents),
+          onboard: {
+            revenue: formatCurrency(cycleOnboardCents),
+            count: cycleOnboardCount,
+            transfer: cycleTransferCount,
+            self: cycleSelfCount
+          },
+          activation: {
+            revenue: formatCurrency(cycleActivationCents),
+            count: cycleActivationCount
+          },
+          projected: formatCurrency(Math.round((currentTotalCents / daysElapsed) * totalDays))
         },
         lifetime: {
-          earnings: formatCurrency(lifetimeEarnings),
+          total: formatCurrency(lifetimeTotalCents),
           onboardCount: onboardedPartners.length
         },
-        history: cycleHistory.slice(0, 5)
-      },
-      schedule: {
-        upcomingCount: upcoming.length,
-        nextItems: upcoming.slice(0, 3).map(a => ({ name: a.name, date: formatDate(a.scheduledAt) }))
+        history: allEarnings.slice(0, 5).map(win => ({
+          label: `${formatDate(win.startDate)} - ${formatDate(win.endDate)}`,
+          total: formatCurrency(win.totalCents),
+          count: win.onboardedCount
+        }))
       }
     });
   };
@@ -287,38 +288,35 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     const rawCtx = prepareContextData();
     const ctx = JSON.parse(rawCtx);
 
-    // 1. CURRENT CYCLE EARNINGS & ONBOARDS
-    if (lower.includes('current cycle') || (lower.includes('this') && lower.includes('cycle')) || lower.includes('current earning') || lower.includes('onboard')) {
-      return `### Cycle Accounting\nIn your active window (**${ctx.activeCycle?.label || 'Current'}**), here is your verified standing:\n\n• **Cycle Revenue:** [[STAT:Earnings:${ctx.accounting.currentCycle.earnings}]]\n• **Onboard Wins:** [[STAT:Total:${ctx.accounting.currentCycle.onboardCount}]]\n• **Activations:** [[STAT:Active:${ctx.accounting.currentCycle.activationCount}]]\n\n[[STAT:Projected Finish:${ctx.accounting.currentCycle.projected}]]`;
+    // 1. CYCLE ACCOUNTING DEEP-DIVE
+    if (lower.includes('current cycle') || (lower.includes('this') && lower.includes('cycle')) || lower.includes('earning') || lower.includes('onboard') || lower.includes('pacing')) {
+      const c = ctx.accounting.currentCycle;
+      return `### Cycle Accounting\nIn the active window (**${ctx.activeCycle?.label || 'Active'}**), here is your data:\n\n• **Onboard Revenue:** [[STAT:Earnings:${c.onboard.revenue}]] (${c.onboard.count} Deals)\n• **Activation Gains:** [[STAT:Gains:${c.activation.revenue}]] (${c.activation.count} Partners)\n• **Cycle Total:** [[STAT:Snapshot:${c.total}]]\n\n**Performance:** You are pacing for a **${c.projected}** finish with **${ctx.activeCycle?.daysRemaining} days** left.`;
     }
 
-    // 2. LIFETIME & OVERALL STATS
-    if (lower.includes('lifetime') || lower.includes('overall') || lower.includes('total stats') || lower.includes('my stats')) {
-      return `### Lifetime Performance\nSince your induction, you have achieved the following milestones:\n\n• **Total Career Earnings:** [[STAT:Lifetime:${ctx.accounting.lifetime.earnings}]]\n• **Total Partners Onboarded:** [[STAT:Reach:${ctx.accounting.lifetime.onboardCount}]]\n\nWould you like to see your full Trophy Case?\n\n[[NAV:onboarded]]`;
+    // 2. TYPES BREAKDOWN (Standard vs Self)
+    if (lower.includes('transfer') || lower.includes('self') || lower.includes('expert') || lower.includes('standard')) {
+      const c = ctx.accounting.currentCycle.onboard;
+      return `### Production Breakdown\nYour cycle production is split as follows:\n\n• **AE Transfers:** [[STAT:Volume:${c.transfer} Deals]] ($20.00 each)\n• **Self-Onboards:** [[STAT:Volume:${c.self} Deals]] ($21.00 each)\n\nSelf-onboarding increases your deal value by **$1.00** per partner. Excellent work handling the full lifecycle.`;
     }
 
-    // 3. PAST HISTORY & PREVIOUS CYCLES
-    if (lower.includes('past') || lower.includes('history') || lower.includes('previous') || lower.includes('last cycle')) {
-      if (ctx.accounting.history.length === 0) return "I don't have enough historical data to show previous cycles yet. Let's finish this one strong!";
-      const list = ctx.accounting.history.map((h: any) => `• **${h.label}**: ${h.total} (${h.count} deals)`).join('\n');
-      return `### Historical Ledger\nHere are your most recent verified pay periods:\n\n${list}\n\n[[NAV:earnings-full]]`;
+    // 3. ACTIVATION LOGIC
+    if (lower.includes('activat')) {
+      const c = ctx.accounting.currentCycle.activation;
+      if (c.count === 0) return `### Activation Status\nYou have no activations recorded in the current cycle.\n\n**Rules:** Activations are only verified when a partner submits their **first referral**. This adds a [[STAT:Bonus:$10.00]] incentive to your current window.`;
+      return `### Activation Momentum\nYou have successfully activated [[STAT:Partners:${c.count}]] this cycle, adding **${c.revenue}** to your payout.\n\nKeep nurturing those partners to maintain high referral velocity!`;
     }
 
-    // 4. UPCOMING SCHEDULE & APPOINTMENTS
-    if (lower.includes('upcoming') || lower.includes('appointment') || lower.includes('schedule') || lower.includes('next')) {
-      if (ctx.schedule.upcomingCount === 0) return `### Schedule Clear\nYou have no upcoming leads scheduled in the immediate pipeline. Time to hit the call blocks!`;
-      const list = ctx.schedule.nextItems.map((item: any) => `• **${item.name}** (${item.date})`).join('\n');
-      return `### Upcoming Operations\nYou have [[STAT:Next Up:${ctx.schedule.upcomingCount} Leads]] on deck:\n\n${list}\n\n[[NAV:calendar]]`;
+    // 4. LIFETIME & HISTORY
+    if (lower.includes('lifetime') || lower.includes('overall') || lower.includes('stats') || lower.includes('history') || lower.includes('past')) {
+      const l = ctx.accounting.lifetime;
+      const history = ctx.accounting.history.map((h: any) => `• **${h.label}**: ${h.total}`).join('\n');
+      return `### Career Ledger\n• **Total Career Reach:** [[STAT:Lifetime:${l.total}]]\n• **Total Onboards:** [[STAT:Count:${l.onboardCount}]]\n\n**Recent Cycles:**\n${history || 'No previous history recorded yet.'}\n\n[[NAV:earnings-full]]`;
     }
 
-    // 5. COMMISSION RULES & MATH
+    // 5. COMMISSION MATRIX
     if (lower.includes('commission') || lower.includes('math') || lower.includes('how much') || lower.includes('rate')) {
-      return `### Earning Matrix\nYour revenue is calculated based on these verified Community Tax tiers:\n\n• **Standard Onboard:** [[STAT:Rate:$20.00]]\n• **Self-Onboard Expert:** [[STAT:Rate:$21.00]]\n• **Partner Activation:** [[STAT:Bonus:$10.00]]\n\nActivations are only added to a cycle once the **first referral** is recorded.`;
-    }
-
-    // 6. TIMELINE & DATES
-    if (lower.includes('date') || lower.includes('window') || lower.includes('when') || lower.includes('remaining')) {
-      return `### Period Timeline\n**Current Window:** ${ctx.activeCycle?.label || 'Active'}\n\n• **Final Day Countdown:** [[STAT:Remaining:${ctx.activeCycle?.daysRemaining || 0} Days]]\n\nKeep track of your pacing to ensure you hit your targets before the window closes.`;
+      return `### Revenue Matrix\nYour earnings are strictly governed by these Community Tax rules:\n\n• **Transfer Onboard:** [[STAT:Rate:$20.00]]\n• **Self-Onboard:** [[STAT:Rate:$21.00]]\n• **Activation:** [[STAT:Rate:$10.00]]\n\nAll dates are recorded based on the **Onboard Time** for deals and **Referral Time** for activations.`;
     }
 
     return null;
