@@ -181,22 +181,13 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
 
   const getDynamicSuggestions = (ctx: any) => {
     const chips: string[] = [];
-    if (!ctx) return ["Current Pacing", "My Stats", "How do I earn?"];
+    if (!ctx) return ["Current Cycle Earnings", "My Stats", "Commission Math"];
     
-    const hasActivations = ctx.performance.currentCycle.activationCount > 0;
-    const hasOnboards = ctx.performance.currentCycle.wins > 0;
-    const latestPartner = ctx.partners.onboarded[0]?.name;
+    chips.push("Current Cycle Earnings");
+    chips.push("My Lifetime Stats");
+    chips.push("Past Cycle History");
+    chips.push("Upcoming Onboards");
     
-    if (user.role === 'admin') {
-      chips.push("Team Pacing", "Top Agent", "Revenue Split", "Active Growth");
-    } else {
-      if (latestPartner) chips.push(`Status of ${latestPartner}`);
-      if (hasOnboards) chips.push("Current Cycle Earnings");
-      if (ctx.performance.history.length > 0) chips.push("Past Earnings");
-      if (hasActivations) chips.push("Activation Proof");
-      
-      if (chips.length < 4) chips.push("My Stats", "Commission Math");
-    }
     return chips.slice(0, 4);
   };
 
@@ -210,87 +201,83 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     const now = new Date();
     const nowTimestamp = now.getTime();
 
-    // Specific Partners Summary
+    // ONBOARDING SUMMARY
     const onboardedPartners = relevantAppointments
-      .filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED)
-      .sort((a, b) => new Date(b.onboardedAt || 0).getTime() - new Date(a.onboardedAt || 0).getTime())
-      .map(a => ({
-        id: a.id,
-        name: a.name,
-        date: formatDate(a.onboardedAt || a.scheduledAt),
-        status: a.stage === AppointmentStage.ACTIVATED ? 'Activated' : 'Pending Activation',
-        earnings: formatCurrency((a.earnedAmount || 0) + ((a.referralCount || 0) * referralCommissionRate))
-      }));
+      .filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
 
-    // Historical Cycle Breakdown
+    // CURRENT CYCLE TRACKING
+    let currentCycleTotal = 0;
+    let currentCycleDeals = 0;
+    let currentCycleActivations = 0;
+    
+    if (activeCycle) {
+      const s = new Date(activeCycle.startDate).getTime();
+      const e = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
+      
+      onboardedPartners.forEach(a => {
+        const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
+        if (d >= s && d <= e) {
+          const agent = allUsers.find(u => u.id === a.userId);
+          const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
+          currentCycleTotal += (a.earnedAmount || defaultRate);
+          currentCycleDeals++;
+          if (a.stage === AppointmentStage.ACTIVATED) currentCycleActivations++;
+        }
+      });
+
+      // Add activation incentives for current cycle
+      const cycleInc = allIncentives.filter(i => 
+        (user.role === 'admin' ? true : i.userId === user.id) && 
+        i.appliedCycleId === activeCycle.id && 
+        (i.label || '').toLowerCase().includes('activat')
+      );
+      currentCycleTotal += cycleInc.reduce((s, i) => s + i.amountCents, 0);
+    }
+
+    // UPCOMING SUMMARY
+    const upcoming = relevantAppointments
+      .filter(a => {
+         const d = new Date(a.scheduledAt).getTime();
+         return d > nowTimestamp && (a.stage === AppointmentStage.PENDING || a.stage === AppointmentStage.RESCHEDULED);
+      })
+      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+
+    // CYCLE HISTORY
     const cycleHistory = allEarnings.map(win => ({
       label: `${formatDate(win.startDate)} - ${formatDate(win.endDate)}`,
       total: formatCurrency(win.totalCents),
       count: win.onboardedCount,
-      status: win.isClosed ? 'Closed' : 'Active'
+      isClosed: win.isClosed
     }));
 
-    let currentCycleTotal = 0;
-    let currentCycleWins = 0;
-    if (activeCycle) {
-      const s = new Date(activeCycle.startDate).getTime();
-      const e = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
-      relevantAppointments.forEach(a => {
-        if (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED) {
-          const rawDate = a.onboardedAt || a.scheduledAt;
-          if (!rawDate) return;
-          const d = new Date(rawDate).getTime();
-          if (d >= s && d <= e) {
-            const agent = allUsers.find(u => u.id === a.userId);
-            const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
-            currentCycleTotal += (a.earnedAmount || defaultRate);
-            currentCycleWins++;
-          }
-        }
-      });
-    }
-
-    const userIncentives = allIncentives.filter(i => (user.role === 'admin' ? true : i.userId === user.id));
-    let currentCycleActivationCents = 0;
-    let currentCycleActivationCount = 0;
-    
-    if (activeCycle) {
-       const cycleInc = userIncentives.filter(i => i.appliedCycleId === activeCycle.id && i.label.toLowerCase().includes('activat'));
-       currentCycleActivationCents = cycleInc.reduce((s, i) => s + i.amountCents, 0);
-       currentCycleActivationCount = cycleInc.length;
-       currentCycleTotal += currentCycleActivationCents;
-    }
-
-    const lifetimeOnboarded = relevantAppointments.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
-    const lifetimeIncentives = userIncentives.reduce((s, i) => s + i.amountCents, 0);
-    const lifetimeEarnings = lifetimeOnboarded.reduce((sum, a) => sum + (a.earnedAmount || 0), 0) + lifetimeIncentives;
+    const lifetimeEarnings = onboardedPartners.reduce((sum, a) => sum + (a.earnedAmount || 0), 0) + 
+      allIncentives.filter(i => (user.role === 'admin' ? true : i.userId === user.id)).reduce((s, i) => s + i.amountCents, 0);
 
     const daysElapsed = Math.max(1, Math.floor((nowTimestamp - (activeCycle ? new Date(activeCycle.startDate).getTime() : nowTimestamp)) / (1000 * 60 * 60 * 24)));
     const totalDays = activeCycle ? Math.ceil((new Date(activeCycle.endDate).getTime() - new Date(activeCycle.startDate).getTime()) / (1000 * 60 * 60 * 24)) : 1;
 
     return JSON.stringify({
       user: { name: user.name, role: user.role },
-      timeContext: {
-        now: now.toLocaleString(),
-        daysElapsed,
-        daysRemaining: activeCycle ? Math.ceil((new Date(activeCycle.endDate).getTime() - nowTimestamp) / (1000 * 60 * 60 * 24)) : 0,
-        activeCycle: activeCycle ? { label: `${formatDate(activeCycle.startDate)} - ${formatDate(activeCycle.endDate)}` } : null
-      },
-      performance: {
+      activeCycle: activeCycle ? {
+        label: `${formatDate(activeCycle.startDate)} - ${formatDate(activeCycle.endDate)}`,
+        daysRemaining: Math.ceil((new Date(activeCycle.endDate).getTime() - nowTimestamp) / (1000 * 60 * 60 * 24))
+      } : null,
+      accounting: {
         currentCycle: {
-          total: formatCurrency(currentCycleTotal),
-          cents: currentCycleTotal,
-          wins: currentCycleWins,
-          activations: currentCycleActivationCount
+          earnings: formatCurrency(currentCycleTotal),
+          onboardCount: currentCycleDeals,
+          activationCount: currentCycleActivations,
+          projected: formatCurrency(Math.round((currentCycleTotal / daysElapsed) * totalDays))
         },
-        history: cycleHistory,
-        lifetime: { total: formatCurrency(lifetimeEarnings), count: lifetimeOnboarded.length }
+        lifetime: {
+          earnings: formatCurrency(lifetimeEarnings),
+          onboardCount: onboardedPartners.length
+        },
+        history: cycleHistory.slice(0, 5)
       },
-      partners: {
-        onboarded: onboardedPartners.slice(0, 15)
-      },
-      pacing: {
-        projected: formatCurrency(Math.round((currentCycleTotal / daysElapsed) * totalDays))
+      schedule: {
+        upcomingCount: upcoming.length,
+        nextItems: upcoming.slice(0, 3).map(a => ({ name: a.name, date: formatDate(a.scheduledAt) }))
       }
     });
   };
@@ -299,51 +286,39 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     const lower = text.toLowerCase();
     const rawCtx = prepareContextData();
     const ctx = JSON.parse(rawCtx);
-    const isFollowUp = lastTopic !== null && (lower.includes('show') || lower.includes('more') || lower.includes('tell') || lower.includes('who') || lower.includes('what'));
 
-    // 1. PROJECTED PAYOUT & PACING
-    if (lower.includes('project') || lower.includes('pace') || lower.includes('forecast')) {
-      setLastTopic('pacing');
-      return `### Financial Projection\nWe are currently on pace for a cycle finish of **${ctx.pacing.projected}**.\n\n[[STAT:Current:${ctx.performance.currentCycle.total}]]\n[[STAT:Projected:${ctx.pacing.projected}]]\n\nYou have **${ctx.timeContext.daysRemaining} days** left to push your numbers higher.`;
+    // 1. CURRENT CYCLE EARNINGS & ONBOARDS
+    if (lower.includes('current cycle') || (lower.includes('this') && lower.includes('cycle')) || lower.includes('current earning') || lower.includes('onboard')) {
+      return `### Cycle Accounting\nIn your active window (**${ctx.activeCycle?.label || 'Current'}**), here is your verified standing:\n\n• **Cycle Revenue:** [[STAT:Earnings:${ctx.accounting.currentCycle.earnings}]]\n• **Onboard Wins:** [[STAT:Total:${ctx.accounting.currentCycle.onboardCount}]]\n• **Activations:** [[STAT:Active:${ctx.accounting.currentCycle.activationCount}]]\n\n[[STAT:Projected Finish:${ctx.accounting.currentCycle.projected}]]`;
     }
 
-    // 2. PARTNER STATUS SEARCH
-    const mentionedPartner = ctx.partners.onboarded.find((p: any) => lower.includes(p.name.toLowerCase()));
-    if (mentionedPartner || (lower.includes('partner') && lower.includes('status'))) {
-      setLastTopic('partners');
-      const p = mentionedPartner || ctx.partners.onboarded[0];
-      if (!p) return "I don't see any onboarded partners in your records yet. Let's get that first win!";
-      return `### Partner Intelligence\n**${p.name}**\n• **Status:** ${p.status}\n• **Onboarded:** ${p.date}\n• **Total Value:** [[STAT:Earnings:${p.earnings}]]\n\n${p.status === 'Activated' ? 'This partner is a Premium Asset.' : 'We should focus on getting their first referral to lock in the activation bonus.'}`;
+    // 2. LIFETIME & OVERALL STATS
+    if (lower.includes('lifetime') || lower.includes('overall') || lower.includes('total stats') || lower.includes('my stats')) {
+      return `### Lifetime Performance\nSince your induction, you have achieved the following milestones:\n\n• **Total Career Earnings:** [[STAT:Lifetime:${ctx.accounting.lifetime.earnings}]]\n• **Total Partners Onboarded:** [[STAT:Reach:${ctx.accounting.lifetime.onboardCount}]]\n\nWould you like to see your full Trophy Case?\n\n[[NAV:onboarded]]`;
     }
 
-    // 3. CURRENT CYCLE EARNINGS
-    if (lower.includes('current cycle') || (lower.includes('this') && lower.includes('cycle')) || lower.includes('current earning')) {
-      setLastTopic('earning');
-      return `### Cycle Breakdown\nIn the current window (**${ctx.timeContext.activeCycle?.label || 'Active'}**), you've secured:\n\n• **Total Volume:** [[STAT:Revenue:${ctx.performance.currentCycle.total}]]\n• **Deals Closed:** [[STAT:Wins:${ctx.performance.currentCycle.wins}]]\n• **Activations:** [[STAT:Active:${ctx.performance.currentCycle.activations}]]\n\nYou're currently at **${ctx.performance.currentCycle.total}** for this period.`;
+    // 3. PAST HISTORY & PREVIOUS CYCLES
+    if (lower.includes('past') || lower.includes('history') || lower.includes('previous') || lower.includes('last cycle')) {
+      if (ctx.accounting.history.length === 0) return "I don't have enough historical data to show previous cycles yet. Let's finish this one strong!";
+      const list = ctx.accounting.history.map((h: any) => `• **${h.label}**: ${h.total} (${h.count} deals)`).join('\n');
+      return `### Historical Ledger\nHere are your most recent verified pay periods:\n\n${list}\n\n[[NAV:earnings-full]]`;
     }
 
-    // 4. PAST EARNINGS / HISTORY
-    if (lower.includes('past') || lower.includes('history') || lower.includes('last cycle') || lower.includes('previous')) {
-      setLastTopic('history');
-      if (ctx.performance.history.length === 0) return "I don't have enough historical data to show past cycles yet. Keep crushing it!";
-      const list = ctx.performance.history.slice(0, 3).map((h: any) => `• **${h.label}**: ${h.total} (${h.count} deals)`).join('\n');
-      return `### Historical Performance\nHere are your most recent completed cycles:\n\n${list}\n\n[[NAV:earnings-full]]`;
+    // 4. UPCOMING SCHEDULE & APPOINTMENTS
+    if (lower.includes('upcoming') || lower.includes('appointment') || lower.includes('schedule') || lower.includes('next')) {
+      if (ctx.schedule.upcomingCount === 0) return `### Schedule Clear\nYou have no upcoming leads scheduled in the immediate pipeline. Time to hit the call blocks!`;
+      const list = ctx.schedule.nextItems.map((item: any) => `• **${item.name}** (${item.date})`).join('\n');
+      return `### Upcoming Operations\nYou have [[STAT:Next Up:${ctx.schedule.upcomingCount} Leads]] on deck:\n\n${list}\n\n[[NAV:calendar]]`;
     }
 
-    // 5. LIFETIME / TOTALS
-    if (lower.includes('lifetime') || lower.includes('total') || lower.includes('overall')) {
-      setLastTopic('lifetime');
-      return `### Legacy Metrics\nSince you started, you've generated a total of:\n\n[[STAT:Lifetime Total:${ctx.performance.lifetime.total}]]\n[[STAT:Total Wins:${ctx.performance.lifetime.count} Partners]]\n\nThis is a solid track record. Want to see your full trophy collection?\n\n[[NAV:onboarded]]`;
+    // 5. COMMISSION RULES & MATH
+    if (lower.includes('commission') || lower.includes('math') || lower.includes('how much') || lower.includes('rate')) {
+      return `### Earning Matrix\nYour revenue is calculated based on these verified Community Tax tiers:\n\n• **Standard Onboard:** [[STAT:Rate:$20.00]]\n• **Self-Onboard Expert:** [[STAT:Rate:$21.00]]\n• **Partner Activation:** [[STAT:Bonus:$10.00]]\n\nActivations are only added to a cycle once the **first referral** is recorded.`;
     }
 
-    // 6. COMMISSION RULES
-    if (lower.includes('commission') || lower.includes('math') || lower.includes('rate') || lower.includes('how much')) {
-      return `### Earning Roadmap\nYour current commission tiers are:\n\n• **Standard Onboard:** [[STAT:Rate:$20.00]]\n• **Expert Self-Onboard:** [[STAT:Rate:$21.00]]\n• **Activation Momentum:** [[STAT:Bonus:$10.00]]\n\nWould you like me to calculate your projection based on these rates?`;
-    }
-
-    // 7. DATES & WINDOWS
-    if (lower.includes('date') || lower.includes('when') || lower.includes('window') || lower.includes('remaining')) {
-      return `### Cycle Timeline\nThe current window is scheduled as follows:\n\n• **Cycle Label:** ${ctx.timeContext.activeCycle?.label || 'Active'}\n• **Time Spent:** [[STAT:Days Elapsed:${ctx.timeContext.daysElapsed} days]]\n• **Time Remaining:** [[STAT:Days Left:${ctx.timeContext.daysRemaining} days]]\n\nWe specify all earnings to the exact date the referral or onboard was recorded.`;
+    // 6. TIMELINE & DATES
+    if (lower.includes('date') || lower.includes('window') || lower.includes('when') || lower.includes('remaining')) {
+      return `### Period Timeline\n**Current Window:** ${ctx.activeCycle?.label || 'Active'}\n\n• **Final Day Countdown:** [[STAT:Remaining:${ctx.activeCycle?.daysRemaining || 0} Days]]\n\nKeep track of your pacing to ensure you hit your targets before the window closes.`;
     }
 
     return null;
