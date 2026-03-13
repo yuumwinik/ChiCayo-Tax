@@ -181,19 +181,21 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
 
   const getDynamicSuggestions = (ctx: any) => {
     const chips: string[] = [];
-    const isAtEnd = ctx.timeContext.daysRemaining <= 3;
+    if (!ctx) return ["Current Pacing", "My Stats", "How do I earn?"];
+    
     const hasActivations = ctx.performance.currentCycle.activationCount > 0;
     const hasOnboards = ctx.performance.currentCycle.wins > 0;
+    const latestPartner = ctx.partners.onboarded[0]?.name;
     
     if (user.role === 'admin') {
       chips.push("Team Pacing", "Top Agent", "Revenue Split", "Active Growth");
     } else {
-      if (isAtEnd) chips.push("Projected Payout", "Pacing Check");
-      if (hasActivations) chips.push("Activation Earnings");
-      if (hasOnboards && !hasActivations) chips.push("How to Activate?");
-      if (!hasOnboards) chips.push("How to get first win?");
+      if (latestPartner) chips.push(`Status of ${latestPartner}`);
+      if (hasOnboards) chips.push("Current Cycle Earnings");
+      if (ctx.performance.history.length > 0) chips.push("Past Earnings");
+      if (hasActivations) chips.push("Activation Proof");
       
-      chips.push("My Stats", "Cycle Info", "Commission Math");
+      if (chips.length < 4) chips.push("My Stats", "Commission Math");
     }
     return chips.slice(0, 4);
   };
@@ -208,37 +210,25 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
     const now = new Date();
     const nowTimestamp = now.getTime();
 
-    // Separate Upcoming vs Past
-    const upcomingEvents = relevantAppointments
-      .filter(a => {
-        const date = new Date(a.scheduledAt).getTime();
-        return date > nowTimestamp && (a.stage === AppointmentStage.PENDING || a.stage === AppointmentStage.RESCHEDULED);
-      })
-      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-      .slice(0, 10)
+    // Specific Partners Summary
+    const onboardedPartners = relevantAppointments
+      .filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED)
+      .sort((a, b) => new Date(b.onboardedAt || 0).getTime() - new Date(a.onboardedAt || 0).getTime())
       .map(a => ({
         id: a.id,
         name: a.name,
-        time: a.scheduledAt,
-        stage: a.stage,
-        type: a.type || 'appointment'
+        date: formatDate(a.onboardedAt || a.scheduledAt),
+        status: a.stage === AppointmentStage.ACTIVATED ? 'Activated' : 'Pending Activation',
+        earnings: formatCurrency((a.earnedAmount || 0) + ((a.referralCount || 0) * referralCommissionRate))
       }));
 
-    const recentPastEvents = relevantAppointments
-      .filter(a => {
-        const date = new Date(a.onboardedAt || a.scheduledAt).getTime();
-        return date <= nowTimestamp;
-      })
-      .sort((a, b) => new Date(b.onboardedAt || b.scheduledAt || b.createdAt).getTime() - new Date(a.onboardedAt || a.scheduledAt || a.createdAt).getTime())
-      .slice(0, 20)
-      .map(a => ({
-        id: a.id,
-        name: a.name,
-        time: a.onboardedAt || a.scheduledAt,
-        stage: a.stage,
-        ae: a.aeName,
-        amt: formatCurrency(a.earnedAmount || 0)
-      }));
+    // Historical Cycle Breakdown
+    const cycleHistory = allEarnings.map(win => ({
+      label: `${formatDate(win.startDate)} - ${formatDate(win.endDate)}`,
+      total: formatCurrency(win.totalCents),
+      count: win.onboardedCount,
+      status: win.isClosed ? 'Closed' : 'Active'
+    }));
 
     let currentCycleTotal = 0;
     let currentCycleWins = 0;
@@ -250,8 +240,6 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
           const rawDate = a.onboardedAt || a.scheduledAt;
           if (!rawDate) return;
           const d = new Date(rawDate).getTime();
-          if (isNaN(d)) return;
-
           if (d >= s && d <= e) {
             const agent = allUsers.find(u => u.id === a.userId);
             const defaultRate = (a.aeName === agent?.name) ? selfCommissionRate : commissionRate;
@@ -262,7 +250,6 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
       });
     }
 
-    // Calc Activations for current user/cycle
     const userIncentives = allIncentives.filter(i => (user.role === 'admin' ? true : i.userId === user.id));
     let currentCycleActivationCents = 0;
     let currentCycleActivationCount = 0;
@@ -276,165 +263,87 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
 
     const lifetimeOnboarded = relevantAppointments.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
     const lifetimeIncentives = userIncentives.reduce((s, i) => s + i.amountCents, 0);
-    const lifetimeEarnings = lifetimeOnboarded.reduce((sum, a) => {
-      return sum + (a.earnedAmount || 0);
-    }, 0) + lifetimeIncentives;
+    const lifetimeEarnings = lifetimeOnboarded.reduce((sum, a) => sum + (a.earnedAmount || 0), 0) + lifetimeIncentives;
 
     const daysElapsed = Math.max(1, Math.floor((nowTimestamp - (activeCycle ? new Date(activeCycle.startDate).getTime() : nowTimestamp)) / (1000 * 60 * 60 * 24)));
     const totalDays = activeCycle ? Math.ceil((new Date(activeCycle.endDate).getTime() - new Date(activeCycle.startDate).getTime()) / (1000 * 60 * 60 * 24)) : 1;
 
-    const context = {
+    return JSON.stringify({
       user: { name: user.name, role: user.role },
       timeContext: {
-        nowISO: now.toISOString(),
-        localTime: now.toLocaleString(),
+        now: now.toLocaleString(),
         daysElapsed,
-        totalDays,
         daysRemaining: activeCycle ? Math.ceil((new Date(activeCycle.endDate).getTime() - nowTimestamp) / (1000 * 60 * 60 * 24)) : 0,
-        activeCycle: activeCycle ? {
-          id: activeCycle.id,
-          label: `${formatDate(activeCycle.startDate)} - ${formatDate(activeCycle.endDate)}`,
-        } : null
+        activeCycle: activeCycle ? { label: `${formatDate(activeCycle.startDate)} - ${formatDate(activeCycle.endDate)}` } : null
       },
       performance: {
         currentCycle: {
-          totalCents: currentCycleTotal,
-          formatted: formatCurrency(currentCycleTotal),
+          total: formatCurrency(currentCycleTotal),
+          cents: currentCycleTotal,
           wins: currentCycleWins,
-          activationEarnings: formatCurrency(currentCycleActivationCents),
-          activationCount: currentCycleActivationCount,
-          onboardWins: currentCycleWins - currentCycleActivationCount
+          activations: currentCycleActivationCount
         },
-        lifetime: {
-          earnings: formatCurrency(lifetimeEarnings),
-          cents: lifetimeEarnings,
-          count: lifetimeOnboarded.length
-        }
+        history: cycleHistory,
+        lifetime: { total: formatCurrency(lifetimeEarnings), count: lifetimeOnboarded.length }
+      },
+      partners: {
+        onboarded: onboardedPartners.slice(0, 15)
       },
       pacing: {
-        projectedCents: Math.round((currentCycleTotal / daysElapsed) * totalDays),
-        formatted: formatCurrency(Math.round((currentCycleTotal / daysElapsed) * totalDays))
-      },
-      upcomingEvents,
-      recentPastEvents,
-      reminders: (user.role === 'admin' ? reminders : reminders.filter(r => r.userId === user.id)).map(r => ({
-        name: r.name,
-        time: r.callBackAt,
-        notes: r.notes
-      }))
-    };
-
-    return JSON.stringify(context);
+        projected: formatCurrency(Math.round((currentCycleTotal / daysElapsed) * totalDays))
+      }
+    });
   };
 
   const handleLocalQuery = (text: string): string | null => {
     const lower = text.toLowerCase();
-    const ctx = JSON.parse(prepareContextData());
-    const isFollowUp = lastTopic !== null && (lower.includes('how much') || lower.includes('more info') || lower.includes('detail') || lower.includes('tell me') || lower.includes('why'));
-
-    // --- FINANCIAL CALCULATOR ENGINE ---
+    const rawCtx = prepareContextData();
+    const ctx = JSON.parse(rawCtx);
+    const isFollowUp = lastTopic !== null && (lower.includes('show') || lower.includes('more') || lower.includes('tell') || lower.includes('who') || lower.includes('what'));
 
     // 1. PROJECTED PAYOUT & PACING
-    if (lower.includes('project') || lower.includes('pace') || lower.includes('expect') || lower.includes('forecast')) {
+    if (lower.includes('project') || lower.includes('pace') || lower.includes('forecast')) {
       setLastTopic('pacing');
-      const projected = ctx.pacing.formatted;
-      const daysLeft = ctx.timeContext.daysRemaining;
-      return `### Financial Projection\nBased on your current performance of [[STAT:Cycle Total:${ctx.performance.currentCycle.formatted}]] over ${ctx.timeContext.daysElapsed} days, you are on pace for:\n\n[[STAT:Projected Payout:${projected}]]\n\nThere are **${daysLeft} days remaining** in this window. Would you like a breakdown of how this is calculated?\n\n[[NAV:user-analytics]]`;
+      return `### Financial Projection\nWe are currently on pace for a cycle finish of **${ctx.pacing.projected}**.\n\n[[STAT:Current:${ctx.performance.currentCycle.total}]]\n[[STAT:Projected:${ctx.pacing.projected}]]\n\nYou have **${ctx.timeContext.daysRemaining} days** left to push your numbers higher.`;
     }
 
-    // 2. ACTIVATIONS (Detailed awareness)
-    if (lower.includes('activat') || (isFollowUp && lastTopic === 'earning')) {
-      setLastTopic('activation');
-      const count = ctx.performance.currentCycle.activationCount;
-      const rev = ctx.performance.currentCycle.activationEarnings;
-      if (count === 0) return `### Activation Status\nYou don't have any activations recorded for the current cycle yet.\n\n**Strategy:** Follow up with your **${ctx.performance.currentCycle.onboardWins} Onboarded partners** to get their first referral. That's worth [[STAT:Activation Bonus:$10.00]] per deal!`;
-      return `### Activation Deep-Dive\nIn this cycle, you've secured [[STAT:Activations:${count}]] worth [[STAT:Earned:${rev}]].\n\nThese are tracked separately from your onboarding commissions to ensure accurate cycle attribution. Keep pushing for that first referral from every onboard!`;
+    // 2. PARTNER STATUS SEARCH
+    const mentionedPartner = ctx.partners.onboarded.find((p: any) => lower.includes(p.name.toLowerCase()));
+    if (mentionedPartner || (lower.includes('partner') && lower.includes('status'))) {
+      setLastTopic('partners');
+      const p = mentionedPartner || ctx.partners.onboarded[0];
+      if (!p) return "I don't see any onboarded partners in your records yet. Let's get that first win!";
+      return `### Partner Intelligence\n**${p.name}**\n• **Status:** ${p.status}\n• **Onboarded:** ${p.date}\n• **Total Value:** [[STAT:Earnings:${p.earnings}]]\n\n${p.status === 'Activated' ? 'This partner is a Premium Asset.' : 'We should focus on getting their first referral to lock in the activation bonus.'}`;
     }
 
-    // 3. COMMISSION MATH & RULES
-    if (lower.includes('commission') || lower.includes('math') || lower.includes('payout') || lower.includes('rule') || lower.includes('how do i earn')) {
-      setLastTopic('math');
-      return `### Commission Structure\nHere is how your earnings are calculated at Community Tax:\n\n• **Standard Onboard:** [[STAT:Basic:$20.00]] per partner\n• **Self-Onboard:** [[STAT:Expert:$21.00]] (If you handle the AE call)\n• **Partner Activation:** [[STAT:Momentum:$10.00]] (First referral from a partner)\n\nActivations are locked to the cycle when the **first referral is received**, not when you onboard them.`;
-    }
-
-    // 4. OVERALL STATS & WALLET
-    if (lower.includes('stat') || lower.includes('summary') || lower.includes('wallet') || lower.includes('earning') || lower.includes('made')) {
+    // 3. CURRENT CYCLE EARNINGS
+    if (lower.includes('current cycle') || (lower.includes('this') && lower.includes('cycle')) || lower.includes('current earning')) {
       setLastTopic('earning');
-      return `### Performance Snapshot\nHere is your real-time standing:\n\n• **Active Cycle:** [[STAT:Current:${ctx.performance.currentCycle.formatted}]]\n• **Cycle Wins:** [[STAT:Total:${ctx.performance.currentCycle.wins} Deals]]\n• **Lifetime Reach:** [[STAT:Total:${ctx.performance.lifetime.earnings}]]\n\nYou're making great progress. Want to see the full historical ledger?\n\n[[NAV:earnings-full]]`;
+      return `### Cycle Breakdown\nIn the current window (**${ctx.timeContext.activeCycle?.label || 'Active'}**), you've secured:\n\n• **Total Volume:** [[STAT:Revenue:${ctx.performance.currentCycle.total}]]\n• **Deals Closed:** [[STAT:Wins:${ctx.performance.currentCycle.wins}]]\n• **Activations:** [[STAT:Active:${ctx.performance.currentCycle.activations}]]\n\nYou're currently at **${ctx.performance.currentCycle.total}** for this period.`;
     }
 
-    // 5. CONVERSION & COACHING
-    if (lower.includes('conversion') || lower.includes('percentage') || lower.includes('how am i doing') || lower.includes('coaching')) {
-      setLastTopic('coaching');
-      const total = ctx.performance.lifetime.count;
-      const act = ctx.performance.currentCycle.activationCount;
-      const rate = total > 0 ? Math.round((act / total) * 100) : 0;
-      return `### Coaching Insights\nYour conversion rate from Onboard to Activated is roughly [[STAT:Conversion:${rate}%]].\n\n**Elite Benchmark:** Top agents maintain a **35%+ activation rate**. \n\n**Pro Tip:** Use the "Nurture Strategy" in your dashboard to follow up with partners who have been dormant for more than 48 hours. [[NAV:dashboard]]`;
+    // 4. PAST EARNINGS / HISTORY
+    if (lower.includes('past') || lower.includes('history') || lower.includes('last cycle') || lower.includes('previous')) {
+      setLastTopic('history');
+      if (ctx.performance.history.length === 0) return "I don't have enough historical data to show past cycles yet. Keep crushing it!";
+      const list = ctx.performance.history.slice(0, 3).map((h: any) => `• **${h.label}**: ${h.total} (${h.count} deals)`).join('\n');
+      return `### Historical Performance\nHere are your most recent completed cycles:\n\n${list}\n\n[[NAV:earnings-full]]`;
     }
 
-    // 6. SCHEDULE & CALENDAR
-    if (lower.includes('upcoming') || lower.includes('next') || lower.includes('today') || lower.includes('tomorrow') || lower.includes('schedule')) {
-      setLastTopic('schedule');
-      if (ctx.upcomingEvents.length === 0) return `### Schedule Empty\nYou have no upcoming leads scheduled. Time to dive into the 'Referral Activation' call block!`;
-      const list = ctx.upcomingEvents.slice(0, 3).map((a: any) => `• **${a.name}** (${formatDate(a.time)})\n [[OPEN_APPT:${a.id}:${a.name}]]`).join('\n');
-      return `### Scheduled Operations\nYou have [[STAT:Next Up:${ctx.upcomingEvents.length} Leads]] on deck:\n\n${list}\n\n[[NAV:calendar]]`;
+    // 5. LIFETIME / TOTALS
+    if (lower.includes('lifetime') || lower.includes('total') || lower.includes('overall')) {
+      setLastTopic('lifetime');
+      return `### Legacy Metrics\nSince you started, you've generated a total of:\n\n[[STAT:Lifetime Total:${ctx.performance.lifetime.total}]]\n[[STAT:Total Wins:${ctx.performance.lifetime.count} Partners]]\n\nThis is a solid track record. Want to see your full trophy collection?\n\n[[NAV:onboarded]]`;
     }
 
-    // 7. REMINDERS
-    if (lower.includes('reminder') || lower.includes('follow up') || lower.includes('callback')) {
-      setLastTopic('reminder');
-      if (ctx.reminders.length === 0) return `### No Pending Reminders\nClear schedule! You can set new reminders inside any appointment card for future follow-ups.`;
-      const list = ctx.reminders.slice(0, 3).map((r: any) => `• **${r.name}** at ${new Date(r.time).toLocaleTimeString()}\n  *"${r.notes || 'No notes'}"*`).join('\n');
-      return `### Active Reminders\nI found [[STAT:Pending:${ctx.reminders.length} Callbacks]] for you:\n\n${list}`;
+    // 6. COMMISSION RULES
+    if (lower.includes('commission') || lower.includes('math') || lower.includes('rate') || lower.includes('how much')) {
+      return `### Earning Roadmap\nYour current commission tiers are:\n\n• **Standard Onboard:** [[STAT:Rate:$20.00]]\n• **Expert Self-Onboard:** [[STAT:Rate:$21.00]]\n• **Activation Momentum:** [[STAT:Bonus:$10.00]]\n\nWould you like me to calculate your projection based on these rates?`;
     }
 
-    // 8. ADMIN TEAM ANALYTICS
-    if (user.role === 'admin' && (lower.includes('team') || lower.includes('leader') || lower.includes('top agent') || lower.includes('members'))) {
-      setLastTopic('admin');
-      return `### Team Synergy Matrix\nThe team is operating at [[STAT:Active Seats:${allUsers.length}]] capacity.\n\nYou have two views available:\n\n1. **High-Level Overview:** Cycle totals and team-wide pacing.\n2. **Deep Dive:** Per-agent specific conversion data.\n\n[[NAV:admin-dashboard]]`;
-    }
-
-    // 9. RECENT WINS
-    if (lower.includes('recent') || lower.includes('last deal') || lower.includes('history')) {
-       if (ctx.recentPastEvents.length === 0) return "No recent history logs found yet.";
-       const last = ctx.recentPastEvents[0];
-       return `### Last Achievement\nYour most recent win was [[STAT:${last.name}:${last.amt}]] at ${formatDate(last.time)}.\n\nWould you like to analyze your historic growth?\n\n[[NAV:onboarded]]`;
-    }
-
-    // 10. PRODUCT KNOWLEDGE (Community Tax)
-    if (lower.includes('who are we') || lower.includes('community tax') || lower.includes('sbtpg') || lower.includes('drake')) {
-       return `### The Resolution Edge\nCommunity Tax is the **Gold Standard** partner for Drake and SBTPG.\n\n• **Direct software integration** for seamless referrals.\n• **$349 Investigation** (Elite partner rate).\n• **Passive Income** for the tax professional while we handle the IRS.`;
-    }
-
-    // 11. CYCLE COMPARISON & GAP ANALYSIS
-    if (lower.includes('compare') || lower.includes('last cycle') || lower.includes('previous')) {
-      const history = allEarnings;
-      if (history.length === 0) return "I don't have enough history to compare yet. This is your first recorded cycle!";
-      const last = history[0];
-      const current = ctx.performance.currentCycle.totalCents;
-      const lastCents = last.totalCents;
-      const diff = current - lastCents;
-      const pct = lastCents > 0 ? Math.round((current / lastCents) * 100) : 0;
-      
-      return `### Cycle Comparison\n• **Previous Cycle:** [[STAT:Closed:${formatCurrency(lastCents)}]]\n• **Current Cycle:** [[STAT:Active:${ctx.performance.currentCycle.formatted}]]\n\nYour performance is at [[STAT:Growth:${pct}%]] compared to last period. ${diff >= 0 ? 'You are currently **up ' + formatCurrency(diff) + '**!' : 'You are currently **down ' + formatCurrency(Math.abs(diff)) + '**.'}`;
-    }
-
-    // 12. PROJECTED BREAKDOWN (Follow-up to pacing)
-    if (isFollowUp && lastTopic === 'pacing') {
-       const projected = ctx.pacing.projectedCents;
-       const remaining = projected - ctx.performance.currentCycle.totalCents;
-       return `### Projection Breakdown\nTo reach your projected [[STAT:Target:${ctx.pacing.formatted}]], you need to generate another [[STAT:Delta:${formatCurrency(remaining)}]] before the window closes.\n\nAt a standard rate of $20/deal, that's roughly **${Math.ceil(remaining / 2000)} more conversions**.`;
-    }
-
-    // 13. TOP AGENT / LEADERBOARD (Admin Focused)
-    if (user.role === 'admin' && (lower.includes('top') || lower.includes('leader') || lower.includes('best'))) {
-       const agentStats = allUsers.filter(u => u.role !== 'admin').map(u => {
-          const wins = allAppointments.filter(a => a.userId === u.id && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED)).length;
-          return { name: u.name, wins };
-       }).sort((a, b) => b.wins - a.wins);
-       
-       const list = agentStats.slice(0, 5).map((s, i) => `${i+1}. **${s.name}**: [[STAT:Wins:${s.wins}]]`).join('\n');
-       return `### Agent Leaderboard\nHere are the top performers by volume:\n\n${list}\n\n[[NAV:admin-dashboard]]`;
+    // 7. DATES & WINDOWS
+    if (lower.includes('date') || lower.includes('when') || lower.includes('window') || lower.includes('remaining')) {
+      return `### Cycle Timeline\nThe current window is scheduled as follows:\n\n• **Cycle Label:** ${ctx.timeContext.activeCycle?.label || 'Active'}\n• **Time Spent:** [[STAT:Days Elapsed:${ctx.timeContext.daysElapsed} days]]\n• **Time Remaining:** [[STAT:Days Left:${ctx.timeContext.daysRemaining} days]]\n\nWe specify all earnings to the exact date the referral or onboard was recorded.`;
     }
 
     return null;
@@ -472,12 +381,15 @@ export const TaxterChat: React.FC<TaxterChatProps> = ({
                           BRAIN: You have full access to current cycle data, activations, and the training playbook.
                           
                           RULES:
-                          1. NEVER mention "backend", "database", "API", "connection", "system", or being an "AI". You ARE the core of this platform.
-                          2. NEVER admit to technical limits. If data is missing or a call fails, provide a high-level strategic tip instead.
-                          3. TONE: Professional, encouraging, and highly data-driven. Use "we" as a team member.
-                          4. DATA: Use [[STAT:Label:Value]] for math. Use [[NAV:View]] or [[OPEN_APPT:ID:Name]] for triggers.
-                          5. CONTEXT: ${context}
-                          6. PLAYBOOK: ${JSON.stringify(TRAINING_CONTENT)}`
+                          1. NEVER mention technical jargon like "backend", "API", or "database".
+                          2. STYLE: Keep responses under 3-4 short sentences. Use bolding for impact.
+                          3. VISUALS: Mandatory use of [[STAT:Label:Value]] for any metric.
+                          4. NAVIGATION: Use [[NAV:View]] or [[OPEN_APPT:ID:Name]] to guide the user.
+                          5. DATA GROUNDING: Use the provided JSON context as the absolute source of truth.
+                          6. PERSONA: You are a high-level Accounting Strategist. You help agents get RICH.
+                          
+                          CONTEXT: ${context}
+                          PLAYBOOK: ${JSON.stringify(TRAINING_CONTENT)}`
               },
               ...messages.slice(-6).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
               { role: 'user', content: prompt }
