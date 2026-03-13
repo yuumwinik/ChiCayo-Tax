@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { EarningWindow, Appointment, AppointmentStage } from '../types';
 import { formatCurrency, formatDate } from '../utils/dateUtils';
 // Fix: Added missing IconX import
-import { IconDollarSign, IconUsers, IconWallet, IconClock, IconLogo, IconSparkles, IconTrendingUp, IconX } from './Icons';
+import { IconDollarSign, IconUsers, IconWallet, IconClock, IconLogo, IconSparkles, IconTrendingUp, IconX, IconRocket } from './Icons';
 
 interface EarningsPanelProps {
    currentWindow: EarningWindow | null;
@@ -21,10 +21,11 @@ interface EarningsPanelProps {
    allAppointments?: Appointment[];
    allIncentives?: any[];
    currentUserName?: string;
+   currentUserId?: string;
 }
 
 export const EarningsPanel: React.FC<EarningsPanelProps> = ({
-   currentWindow, history, isOpen, onClose, onViewAll, title, isTeamView, teamEarnings = 0, teamCurrentPool = 0, activeCycleLabel, lifetimeEarnings = 0, referralRate = 500, allAppointments = [], allIncentives = [], currentUserName
+   currentWindow, history, isOpen, onClose, onViewAll, title, isTeamView, teamEarnings = 0, teamCurrentPool = 0, activeCycleLabel, lifetimeEarnings = 0, referralRate = 500, allAppointments = [], allIncentives = [], currentUserName, currentUserId
 }) => {
 
    const calculateProgress = (window: EarningWindow) => {
@@ -57,20 +58,41 @@ export const EarningsPanel: React.FC<EarningsPanelProps> = ({
    const currentActivationMetrics = useMemo(() => {
       if (!currentWindow || !allIncentives.length) return null;
 
-      const cycleIncentives = allIncentives.filter(i =>
-         i.appliedCycleId === currentWindow.id &&
-         i.label.toLowerCase().includes('activation')
-      );
+      const cycleStart = new Date(currentWindow.startDate).getTime();
+      const cycleEnd = new Date(currentWindow.endDate).setHours(23, 59, 59, 999);
+
+      const cycleIncentives = allIncentives.filter(i => {
+         if (i.appliedCycleId !== currentWindow.id) return false;
+         if (!i.label.toLowerCase().includes('activat')) return false;
+         if (!isTeamView && i.userId !== currentUserId) return false;
+
+         // Cross-validate: the linked appointment's actual closing date must fall
+         // within this cycle's date window. This is the definitive guard against
+         // backfilled or misassigned incentives showing in the wrong cycle.
+         if (i.relatedAppointmentId) {
+            const linked = allAppointments.find(a => a.id === i.relatedAppointmentId);
+            if (linked) {
+               const eventDate = new Date(linked.activatedAt || linked.onboardedAt || linked.scheduledAt || 0).getTime();
+               if (eventDate < cycleStart || eventDate > cycleEnd) return false;
+            }
+         }
+         return true;
+      });
 
       if (cycleIncentives.length === 0) return null;
-
-      const totalRevenue = cycleIncentives.reduce((sum, i) => sum + i.amountCents, 0);
-
       return {
          count: cycleIncentives.length,
-         revenue: totalRevenue
+         revenue: cycleIncentives.reduce((sum, i) => sum + i.amountCents, 0)
       };
-   }, [currentWindow, allIncentives]);
+   }, [currentWindow, allIncentives, allAppointments, isTeamView, currentUserId]);
+
+   const lifetimeActivationEarnings = useMemo(() => {
+      if (!allIncentives.length) return 0;
+      return allIncentives.filter(i => 
+         i.label.toLowerCase().includes('activat') && 
+         (isTeamView ? true : i.userId === currentUserId)
+      ).reduce((sum, i) => sum + i.amountCents, 0);
+   }, [allIncentives, isTeamView, currentUserId]);
 
    return (
       <div className={`fixed inset-y-0 right-0 z-[100] w-full sm:w-96 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-l border-slate-200 dark:border-slate-800 shadow-2xl transform transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
@@ -121,7 +143,15 @@ export const EarningsPanel: React.FC<EarningsPanelProps> = ({
                         {currentWindow ? (
                            <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
                               <div className="flex justify-between items-center mb-4">
-                                 <div><div className="text-2xl font-bold text-slate-900 dark:text-white">{formatCurrency(currentWindow.totalCents)}</div><div className="text-xs text-slate-500 font-medium">Earned this cycle</div></div>
+                                 <div>
+                                    <div className="text-2xl font-bold text-slate-900 dark:text-white">{formatCurrency(currentWindow.totalCents)}</div>
+                                    <div className="text-xs text-slate-500 font-medium">Earned this cycle</div>
+                                    {currentActivationMetrics && currentActivationMetrics.revenue > 0 && (
+                                       <div className="bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 px-2 py-0.5 rounded text-[9px] font-black uppercase mt-1 inline-block border border-sky-100 dark:border-sky-800">
+                                          Includes {formatCurrency(currentActivationMetrics.revenue)} in Activations
+                                       </div>
+                                    )}
+                                 </div>
                                  <div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 px-3 py-1 rounded-full text-xs font-bold border border-indigo-100 dark:border-indigo-800">{currentWindow.onboardedCount} Deals</div>
                               </div>
                               <div className="space-y-2">
@@ -136,12 +166,12 @@ export const EarningsPanel: React.FC<EarningsPanelProps> = ({
                      {currentActivationMetrics && (
                         <section className="animate-in fade-in slide-in-from-right-4 duration-700 delay-200">
                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1 flex items-center gap-2"><IconTrendingUp className="w-3 h-3 text-emerald-500" /> Activation Earnings</h3>
-                           <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl p-5 border border-emerald-100 dark:border-emerald-900/30 flex items-center justify-between">
+                           <div className="bg-sky-50 dark:bg-sky-900/10 rounded-2xl p-5 border border-sky-100 dark:border-sky-900/30 flex items-center justify-between">
                               <div>
-                                 <div className="text-xl font-black text-emerald-600 dark:text-emerald-400">+{formatCurrency(currentActivationMetrics.revenue)}</div>
+                                 <div className="text-xl font-black text-sky-600 dark:text-sky-400">+{formatCurrency(currentActivationMetrics.revenue)}</div>
                                  <div className="text-[10px] font-bold text-slate-500 uppercase">From {currentActivationMetrics.count} activations</div>
                               </div>
-                              <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-emerald-500"><IconUsers className="w-6 h-6" /></div>
+                              <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-sky-500"><IconRocket className="w-6 h-6" /></div>
                            </div>
                         </section>
                      )}
@@ -149,15 +179,36 @@ export const EarningsPanel: React.FC<EarningsPanelProps> = ({
                )}
 
                {history.length > 0 && (
-                  <section className="flex-1 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
-                     <div className="flex justify-between items-center mb-3 px-1"><h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recent History</h3><button onClick={onViewAll} className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline">See All</button></div>
+                  <section className="animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
+                     <div className="flex justify-between items-center mb-3 px-1">
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recent History</h3>
+                        <button onClick={onViewAll} className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline">See All</button>
+                     </div>
                      <div className="space-y-3">
-                        {history.slice(0, 3).map((win) => (
+                        {history.slice(0, 4).map((win) => (
                            <div key={win.id} className="bg-white dark:bg-slate-800 p-4 rounded-2xl flex justify-between items-center border border-slate-100 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-shadow">
                               <div><div className="text-xs font-bold text-slate-900 dark:text-slate-200 mb-0.5">{formatDate(win.endDate)}</div><div className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">{win.onboardedCount} clients onboarded</div></div>
                               <div className="text-right"><div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(win.totalCents)}</div><div className="text-[9px] text-slate-400 uppercase font-bold bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded mt-1 inline-block">Closed</div></div>
                            </div>
                         ))}
+                     </div>
+                  </section>
+               )}
+
+               {/* LIFETIME ACTIVATION CARD - ALWAYS VISIBLE IF > 0 */}
+               {lifetimeActivationEarnings > 0 && (
+                  <section className="animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300 pb-10 mt-8">
+                     <div className="bg-gradient-to-br from-sky-600 to-blue-700 p-6 rounded-[2rem] text-white shadow-xl shadow-sky-200 dark:shadow-none overflow-hidden relative group transition-transform hover:scale-[1.02]">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl transform translate-x-10 -translate-y-10 group-hover:scale-110 transition-transform"></div>
+                        <div className="relative z-10">
+                           <div className="flex items-center gap-2 mb-2">
+                              <IconSparkles className="w-4 h-4 text-sky-300 animate-pulse" />
+                              <div className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Total Activity Gains</div>
+                           </div>
+                           <div className="text-3xl font-black tabular-nums">{formatCurrency(lifetimeActivationEarnings)}</div>
+                           <p className="text-[9px] font-bold opacity-60 mt-2 uppercase tracking-tight">Lifetime activation rewards accumulated</p>
+                        </div>
+                        <IconRocket className="absolute -bottom-4 -right-4 w-24 h-24 opacity-10 -rotate-12 group-hover:rotate-0 transition-transform duration-700" />
                      </div>
                   </section>
                )}

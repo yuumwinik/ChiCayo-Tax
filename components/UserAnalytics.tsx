@@ -27,6 +27,7 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
    const [selectedScopeId, setSelectedScopeId] = useState<string>('active');
    const [expandedCycles, setExpandedCycles] = useState<Set<string>>(new Set());
    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
 
    const toggleCycle = (id: string) => {
       const next = new Set(expandedCycles);
@@ -47,11 +48,13 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
       let start: number | null = null;
       let end: number | null = null;
       let scopeType: 'active' | 'lifetime' | 'history' = 'lifetime';
+      let scopeCycleId: string | null = null;
 
       if (selectedScopeId === 'active' && activeCycle) {
          start = new Date(activeCycle.startDate).getTime();
          end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
          scopeType = 'active';
+         scopeCycleId = activeCycle.id;
       } else if (selectedScopeId !== 'lifetime') {
          const cycle = payCycles.find(c => c.id === selectedScopeId);
          if (cycle) {
@@ -59,20 +62,33 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
             end = new Date(cycle.endDate).setHours(23, 59, 59, 999);
             label = `${formatDate(cycle.startDate)} - ${formatDate(cycle.endDate)}`;
             scopeType = 'history';
+            scopeCycleId = cycle.id;
          }
       } else {
          label = "Lifetime Performance";
          scopeType = 'lifetime';
       }
 
-      if (scopeType !== 'lifetime' && start !== null && end !== null) {
+      // STRICT CYCLE FILTERING
+      // Onboarded appointments use onboardedAt; Activated appointments use activatedAt.
+      // This is critical to prevent an activation that was closed in a previous cycle
+      // from appearing in the current active cycle stats.
+      const filterApptForCycle = (a: Appointment): boolean => {
+         if (scopeType === 'lifetime' || start === null || end === null) return true;
          const s = start; const e = end;
-         personalFiltered = personalFiltered.filter(a => { const d = new Date(a.onboardedAt || a.scheduledAt).getTime(); return d >= s && d <= e; });
-         teamFiltered = teamFiltered.filter(a => { const d = new Date(a.onboardedAt || a.scheduledAt).getTime(); return d >= s && d <= e; });
-      }
+         if (a.stage === AppointmentStage.ACTIVATED) {
+            const d = new Date(a.activatedAt || a.onboardedAt || a.scheduledAt).getTime();
+            return d >= s && d <= e;
+         }
+         const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
+         return d >= s && d <= e;
+      };
 
-      const personalOnboarded = personalFiltered.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
-      const teamOnboarded = teamFiltered.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
+      const personalFiltersApplied = personalFiltered.filter(filterApptForCycle);
+      const teamFiltersApplied = teamFiltered.filter(filterApptForCycle);
+
+      const personalOnboarded = personalFiltersApplied.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
+      const teamOnboarded = teamFiltersApplied.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
 
       const aeBreakdown: Record<string, number> = { 'Joshua': 0, 'Jorge': 0, 'Andrew': 0 };
       if (currentUserName) aeBreakdown[currentUserName] = 0;
@@ -82,23 +98,46 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
          else if (!a.aeName && currentUserName) aeBreakdown[currentUserName]++;
       });
 
-      const totalReferrals = personalOnboarded.filter(a => a.stage === AppointmentStage.ACTIVATED).length;
+      // Incentives: first filter by appliedCycleId (DB-level), then cross-validate
+      // activation incentives against the linked appointment's actual event date
+      // (UI-level safety net — catches any remaining DB mismatches).
+      const personalIncentives = allIncentives.filter(i => {
+         if (i.userId !== currentUser.id) return false;
+         if (scopeType === 'lifetime') return true;
 
-      const personalProdRevenue = personalOnboarded.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
+         // Primary filter: appliedCycleId must match
+         if (i.appliedCycleId !== scopeCycleId) return false;
 
-      // Force accurate activation revenue display based on stage
-      const activationIncentiveRevenue = totalReferrals * 1000;
+         // Secondary guard for activation incentives: cross-validate the linked
+         // appointment's actual closing date against the cycle's date window.
+         // This catches backfilled records whose created_at is today but whose
+         // partner was actually activated in a prior cycle.
+         if (i.label.toLowerCase().includes('activat') && i.relatedAppointmentId && start !== null && end !== null) {
+            const linkedAppt = allAppointments.find(a => a.id === i.relatedAppointmentId);
+            if (linkedAppt) {
+               const eventDate = new Date(linkedAppt.activatedAt || linkedAppt.onboardedAt || linkedAppt.scheduledAt || 0).getTime();
+               if (eventDate < start || eventDate > end) {
+                  // The appointment's actual closing date is outside this cycle — exclude it.
+                  return false;
+               }
+            }
+         }
 
-      const personalBonusRevenue = allIncentives.filter(i => {
-         if (i.userId !== currentUser.id && i.userId !== 'team') return false;
-         if (scopeType === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
-         if (scopeType === 'history' && i.appliedCycleId !== selectedScopeId) return false;
+         return true;
+      });
+
+      const personalActivationIncentives = personalIncentives.filter(i => i.label.toLowerCase().includes('activat'));
+      const totalReferrals = personalActivationIncentives.length;
+      const activationIncentiveRevenue = personalActivationIncentives.reduce((sum, i) => sum + Number(i.amountCents), 0);
+
+      const personalBonusRevenue = personalIncentives.filter(i => {
          // Skip activation and ref incentives — they are counted separately
-         if (i.label.toLowerCase().includes('activation')) return false;
+         if (i.label.toLowerCase().includes('activat')) return false;
          if (i.relatedAppointmentId && i.label.toLowerCase().includes('ref')) return false;
          return true;
       }).reduce((sum, i) => sum + Number(i.amountCents), 0);
 
+      const personalProdRevenue = personalOnboarded.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
       const myTotalRevenue = personalProdRevenue + personalBonusRevenue + activationIncentiveRevenue;
 
       // Calculate earnings breakdown
@@ -109,23 +148,28 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
       const activationPercentage = totalRevenueForBreakdown > 0 ? Math.round((activationRevenue / totalRevenueForBreakdown) * 100) : 0;
       const activationCount = totalReferrals;
 
+      // Team pool: strictly by appliedCycleId AND date cross-validation for activations
+      const teamPoolIncentives = allIncentives.filter(i => {
+         if (scopeType === 'lifetime') return true;
+         if (i.appliedCycleId !== scopeCycleId) return false;
+         // Cross-validate activation date for team pool too
+         if (i.label.toLowerCase().includes('activat') && i.relatedAppointmentId && start !== null && end !== null) {
+            const linkedAppt = allAppointments.find(a => a.id === i.relatedAppointmentId);
+            if (linkedAppt) {
+               const eDate = new Date(linkedAppt.activatedAt || linkedAppt.onboardedAt || linkedAppt.scheduledAt || 0).getTime();
+               if (eDate < start || eDate > end) return false;
+            }
+         }
+         return true;
+      });
+
       const teamTotalPool = teamOnboarded.reduce((sum, a) => {
          const base = Number(a.earnedAmount) || 0;
          return sum + base;
-      }, 0) + allIncentives.filter(i => {
-         if (scopeType === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
-         if (scopeType === 'history' && i.appliedCycleId !== selectedScopeId) return false;
-
-         // Verification: ONLY include activation incentives if the linked partner is ACTIVATED
-         if (i.relatedAppointmentId && i.label.toLowerCase().includes('activation')) {
-            const linked = allAppointments.find(a => a.id === i.relatedAppointmentId);
-            if (linked && linked.stage !== AppointmentStage.ACTIVATED) return false;
-         }
-         return true;
-      }).reduce((sum, i) => sum + Number(i.amountCents), 0);
+      }, 0) + teamPoolIncentives.reduce((sum, i) => sum + Number(i.amountCents), 0);
 
       return {
-         total: personalFiltered.length,
+         total: personalFiltersApplied.length,
          onboarded: personalOnboarded.length,
          revenue: myTotalRevenue,
          bonusRevenue: personalBonusRevenue,
@@ -154,6 +198,61 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
    const strokeDash = (contributionPercentage / 100) * circum;
 
    const historicalWindows = useMemo(() => earnings.current ? [earnings.current, ...earnings.history] : earnings.history, [earnings.current, earnings.history]);
+
+   const leaderboardData = useMemo(() => {
+      let start: number | null = null;
+      let end: number | null = null;
+      let scopeType: 'active' | 'lifetime' | 'history' = 'lifetime';
+
+      if (selectedScopeId === 'active' && activeCycle) {
+         start = new Date(activeCycle.startDate).getTime();
+         end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
+         scopeType = 'active';
+      } else if (selectedScopeId !== 'lifetime') {
+         const cycle = payCycles.find(c => c.id === selectedScopeId);
+         if (cycle) {
+            start = new Date(cycle.startDate).getTime();
+            end = new Date(cycle.endDate).setHours(23, 59, 59, 999);
+            scopeType = 'history';
+         }
+      }
+
+      const performers = users.map(u => {
+         let userAppts = allAppointments.filter(a => a.userId === u.id);
+         let userIncentives = allIncentives.filter(i => i.userId === u.id);
+
+         if (scopeType !== 'lifetime' && start !== null && end !== null) {
+            const s = start; const e = end;
+            userAppts = userAppts.filter(a => {
+               const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
+               return d >= s && d <= e;
+            });
+            userIncentives = userIncentives.filter(i => {
+               if (scopeType === 'active' && i.appliedCycleId !== activeCycle?.id) return false;
+               if (scopeType === 'history' && i.appliedCycleId !== selectedScopeId) return false;
+               return true;
+            });
+         }
+
+         const onboards = userAppts.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
+         const prodRev = onboards.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
+         const actRev = userIncentives.filter(i => i.label.toLowerCase().includes('activation')).reduce((sum, i) => sum + i.amountCents, 0);
+         const bonusRev = userIncentives.filter(i => {
+            if (i.label.toLowerCase().includes('activation')) return false;
+            if (i.relatedAppointmentId && i.label.toLowerCase().includes('ref')) return false;
+            return true;
+         }).reduce((sum, i) => sum + Number(i.amountCents), 0);
+
+         return {
+            id: u.id,
+            name: u.name,
+            avatarId: u.avatarId,
+            revenue: prodRev + actRev + bonusRev
+         };
+      }).filter(p => p.revenue > 0).sort((a, b) => b.revenue - a.revenue);
+
+      return performers;
+   }, [users, allAppointments, allIncentives, selectedScopeId, activeCycle, payCycles]);
 
    return (
       <div className="space-y-8 animate-in fade-in duration-500 pb-20">
@@ -207,27 +306,29 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl transform translate-x-10 -translate-y-10"></div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-6 border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-6 animate-in slide-in-from-right-4 duration-500">
-               <div className="relative w-28 h-28 shrink-0">
-                  <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full drop-shadow-sm">
-                     <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#f1f5f9" strokeWidth="8" className="dark:stroke-slate-700" />
-                     <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#6366f1" strokeWidth="10" strokeDasharray={`${strokeDash} ${circum}`} strokeLinecap="round" className="transition-all duration-1000 ease-out" />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                     <span className="text-xl font-black text-slate-900 dark:text-white tabular-nums">{contributionPercentage}%</span>
-                     <span className="text-[7px] font-bold text-slate-400 uppercase">Share</span>
+            {contributionPercentage > 0 && (
+               <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-6 border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-6 animate-in slide-in-from-right-4 duration-500">
+                  <div className="relative w-28 h-28 shrink-0">
+                     <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full drop-shadow-sm">
+                        <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#f1f5f9" strokeWidth="8" className="dark:stroke-slate-700" />
+                        <circle cx="50" cy="50" r={radius} fill="transparent" stroke="#6366f1" strokeWidth="10" strokeDasharray={`${strokeDash} ${circum}`} strokeLinecap="round" className="transition-all duration-1000 ease-out" />
+                     </svg>
+                     <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-xl font-black text-slate-900 dark:text-white tabular-nums">{contributionPercentage}%</span>
+                        <span className="text-[7px] font-bold text-slate-400 uppercase">Share</span>
+                     </div>
+                  </div>
+                  <div>
+                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Team Influence</h3>
+                     <div className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
+                        You own {contributionPercentage}% of the {scopedData.scopeType === 'lifetime' ? 'lifetime' : 'scoped'} team pool.
+                     </div>
+                     <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-2 uppercase tracking-tighter bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded w-fit">
+                        POOL: {formatCurrency(scopedData.teamPoolTotal)}
+                     </div>
                   </div>
                </div>
-               <div>
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Team Influence</h3>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
-                     You own {contributionPercentage}% of the {scopedData.scopeType === 'lifetime' ? 'lifetime' : 'scoped'} team pool.
-                  </div>
-                  <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-2 uppercase tracking-tighter bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded w-fit">
-                     POOL: {formatCurrency(scopedData.teamPoolTotal)}
-                  </div>
-               </div>
-            </div>
+            )}
          </div>
 
          {
@@ -258,12 +359,14 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
             )
          }
 
-         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl"><IconCheck className="w-4 h-4" /></div><span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Onboarded</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">{scopedData.onboarded}</div><div className="text-[10px] text-slate-400 font-medium mt-1">Confirmed Wins</div></div>
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl"><IconSparkles className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Self Rate</span></div><div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{scopedData.onboarded > 0 ? ((scopedData.selfOnboards / scopedData.onboarded) * 100).toFixed(1) : '0.0'}%</div><div className="text-[10px] text-slate-400 font-medium mt-1">{scopedData.selfOnboards} Independent Closes</div></div>
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl"><IconTrendingUp className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Conversion</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">{scopedData.total > 0 ? ((scopedData.onboarded / scopedData.total) * 100).toFixed(1) : '0.0'}%</div><div className="text-[10px] text-slate-400 font-medium mt-1">Lead to Deal Mastery</div></div>
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl"><IconClock className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Peak Time</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">{scopedData.peakTime}</div><div className="text-[10px] text-slate-400 font-medium mt-1">Optimization analysis</div></div>
-         </div>
+         {scopedData.total > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+               <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl"><IconCheck className="w-4 h-4" /></div><span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Onboarded</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">{scopedData.onboarded}</div><div className="text-[10px] text-slate-400 font-medium mt-1">Confirmed Wins</div></div>
+               <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl"><IconSparkles className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Self Rate</span></div><div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{scopedData.onboarded > 0 ? ((scopedData.selfOnboards / scopedData.onboarded) * 100).toFixed(1) : '0.0'}%</div><div className="text-[10px] text-slate-400 font-medium mt-1">{scopedData.selfOnboards} Independent Closes</div></div>
+               <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl"><IconTrendingUp className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Conversion</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">{scopedData.total > 0 ? ((scopedData.onboarded / scopedData.total) * 100).toFixed(1) : '0.0'}%</div><div className="text-[10px] text-slate-400 font-medium mt-1">Lead to Deal Mastery</div></div>
+               <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm transition-transform hover:scale-[1.02]"><div className="flex items-center gap-3 mb-2"><div className="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl"><IconClock className="w-4 h-4" /></div><span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Peak Time</span></div><div className="text-3xl font-black text-slate-900 dark:text-white">{scopedData.peakTime}</div><div className="text-[10px] text-slate-400 font-medium mt-1">Optimization analysis</div></div>
+            </div>
+         )}
 
          {/* EARNINGS BREAKDOWN WIDGET - Only show if there's data */}
          {scopedData.onboarded > 0 && (
@@ -336,31 +439,35 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
             </div>
          )}
 
-         <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-6 text-slate-50 dark:text-slate-800/20"><IconTrendingUp className="w-16 h-16" /></div>
-            <div className="flex items-center justify-between mb-4"><div><h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2"><IconBriefcase className="w-4 h-4 text-indigo-600" /> AE Closing Breakdown</h3><p className="text-[10px] text-slate-500 font-medium mt-0.5">Who is sealing the deal on your leads?</p></div><div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest leading-none">{scopedData.onboarded} Wins</div></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-               {Object.entries(scopedData.aeBreakdown).map(([name, countValue]) => {
-                  const count = countValue as number;
-                  const percent = scopedData.onboarded > 0 ? Math.round((count / scopedData.onboarded) * 100) : 0; const isSelf = name === currentUserName;
-                  return (<div key={name} className="space-y-1.5"><div className="flex justify-between items-end"><div className="flex items-center gap-2"><span className={`font-bold text-xs ${isSelf ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300'}`}>{name} {isSelf && '(You)'}</span></div><div className="text-right"><span className="text-sm font-black text-slate-900 dark:text-white leading-none">{count}</span><span className="text-[9px] font-bold text-slate-400 ml-1 uppercase">Wins</span></div></div><div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-50 dark:border-slate-800/50"><div className={`h-full ${isSelf ? 'bg-indigo-600' : 'bg-slate-400'} transition-all duration-1000`} style={{ width: `${percent}%` }} /></div><div className="flex justify-between"><span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Support Level</span><span className="text-[9px] font-black text-slate-500">{percent}%</span></div></div>);
-               })}
+         {scopedData.onboarded > 0 && (
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-6 text-slate-50 dark:text-slate-800/20"><IconTrendingUp className="w-16 h-16" /></div>
+               <div className="flex items-center justify-between mb-4"><div><h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2"><IconBriefcase className="w-4 h-4 text-indigo-600" /> AE Closing Breakdown</h3><p className="text-[10px] text-slate-500 font-medium mt-0.5">Who is sealing the deal on your leads?</p></div><div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest leading-none">{scopedData.onboarded} Wins</div></div>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                  {Object.entries(scopedData.aeBreakdown).map(([name, countValue]) => {
+                     const count = countValue as number;
+                     const percent = scopedData.onboarded > 0 ? Math.round((count / scopedData.onboarded) * 100) : 0; const isSelf = name === currentUserName;
+                     return (<div key={name} className="space-y-1.5"><div className="flex justify-between items-end"><div className="flex items-center gap-2"><span className={`font-bold text-xs ${isSelf ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300'}`}>{name} {isSelf && '(You)'}</span></div><div className="text-right"><span className="text-sm font-black text-slate-900 dark:text-white leading-none">{count}</span><span className="text-[9px] font-bold text-slate-400 ml-1 uppercase">Wins</span></div></div><div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-50 dark:border-slate-800/50"><div className={`h-full ${isSelf ? 'bg-indigo-600' : 'bg-slate-400'} transition-all duration-1000`} style={{ width: `${percent}%` }} /></div><div className="flex justify-between"><span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Support Level</span><span className="text-[9px] font-black text-slate-500">{percent}%</span></div></div>);
+                  })}
+               </div>
             </div>
-         </div>
+         )}
 
-         <div className="space-y-4">
-            <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3"><IconStar className="w-6 h-6 text-emerald-500" /> My Referral Insights</h3>
-            <ReferralWinsTab
-               appointments={allAppointments}
-               incentives={allIncentives}
-               users={users}
-               payCycles={payCycles}
-               referralRate={referralRate}
-               currentUser={currentUser}
-               onViewAppt={onViewAppt}
-            />
-         </div>
-
+         {scopedData.referralCount > 0 && (
+            <div className="space-y-4">
+               <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3"><IconStar className="w-6 h-6 text-emerald-500" /> My Referral Insights</h3>
+               <ReferralWinsTab
+                  appointments={allAppointments}
+                  incentives={allIncentives}
+                  users={users}
+                  payCycles={payCycles}
+                  referralRate={referralRate}
+                  currentUser={currentUser}
+                  onViewAppt={onViewAppt}
+               />
+            </div>
+         )}
+         
          {/* Payout History Moved to Bottom & Collapsible */}
          <div className="space-y-4 border-t-4 border-slate-100 dark:border-slate-800 pt-10">
             <button
@@ -447,6 +554,125 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                </div>
             )}
          </div>
-      </div >
+
+         {/* FULL TEAM LEADERBOARD */}
+         {leaderboardData.length > 0 && (
+            <div className="space-y-4 border-t-4 border-slate-100 dark:border-slate-800 pt-10">
+               <button
+                  onClick={() => setIsLeaderboardOpen(!isLeaderboardOpen)}
+                  className="flex items-center justify-between w-full px-4 group"
+               >
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-4">
+                     <IconTrophy className="w-8 h-8 text-amber-500" />
+                     Full Team Leaderboard
+                  </h3>
+                  <div className={`p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 transition-all group-hover:bg-amber-500 group-hover:text-white ${isLeaderboardOpen ? 'rotate-180' : ''}`}>
+                     <IconChevronDown className="w-6 h-6" />
+                  </div>
+               </button>
+
+               {isLeaderboardOpen && (
+                  <div className="animate-in slide-in-from-top-4 duration-500 bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
+                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                        <div className="space-y-6">
+                           <div className="flex items-center gap-2 mb-4">
+                              <span className="px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest rounded-lg">Ranked by Performance</span>
+                           </div>
+                           <div className="space-y-4">
+                              {leaderboardData.map((performer, idx) => {
+                                 const maxRev = leaderboardData[0].revenue;
+                                 const relativeWidth = Math.max(10, (performer.revenue / maxRev) * 100);
+                                 const isSelf = performer.id === currentUser.id;
+                                 
+                                 // Sequence of colors for top 5
+                                 const colors = [
+                                    'bg-amber-500',
+                                    'bg-indigo-500',
+                                    'bg-emerald-500',
+                                    'bg-violet-500',
+                                    'bg-rose-500'
+                                 ];
+                                 const barColor = idx < 5 ? colors[idx] : 'bg-slate-400';
+
+                                 return (
+                                    <div key={performer.id} className="group">
+                                       <div className="flex justify-between items-center mb-1.5 px-1">
+                                          <div className="flex items-center gap-3">
+                                             <span className="text-xs font-black text-slate-400 w-4">#{idx + 1}</span>
+                                             <span className={`text-sm font-bold ${isSelf ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                {performer.name} {isSelf && '(You)'}
+                                             </span>
+                                          </div>
+                                          {idx === 0 && <IconStar className="w-4 h-4 text-amber-500" />}
+                                       </div>
+                                       <div className="h-4 w-full bg-slate-50 dark:bg-slate-800/50 rounded-full overflow-hidden border border-slate-100 dark:border-slate-800 shadow-inner p-1">
+                                          <div 
+                                             className={`h-full ${barColor} rounded-full transition-all duration-1000 ease-out`}
+                                             style={{ width: `${relativeWidth}%` }}
+                                          />
+                                       </div>
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        </div>
+
+                        <div className="flex flex-col items-center justify-center p-8 bg-slate-50 dark:bg-slate-800/50 rounded-[2.5rem] border border-slate-100 dark:border-slate-800/50">
+                           <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-8">Ownership of Full Pot</h4>
+                           <div className="relative w-64 h-64">
+                              <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
+                                 {leaderboardData.slice(0, 8).map((p, i, arr) => {
+                                    const total = leaderboardData.reduce((sum, item) => sum + item.revenue, 0);
+                                    let offset = 0;
+                                    for (let j = 0; j < i; j++) offset += (arr[j].revenue / total) * 100;
+                                    const percent = (p.revenue / total) * 100;
+                                    
+                                    const colors = ['#f59e0b', '#6366f1', '#10b981', '#8b5cf6', '#f43f5e', '#06b6d4', '#ec4899', '#84cc16'];
+                                    const stroke = colors[i % colors.length];
+                                    const r = 40;
+                                    const c = 2 * Math.PI * r;
+                                    const dash = (percent / 100) * c;
+                                    const space = c - dash;
+
+                                    return (
+                                       <circle
+                                          key={p.id}
+                                          cx="50" cy="50" r={r}
+                                          fill="transparent"
+                                          stroke={stroke}
+                                          strokeWidth="12"
+                                          strokeDasharray={`${dash} ${space}`}
+                                          strokeDashoffset={-(offset / 100) * c}
+                                          className="transition-all duration-1000"
+                                       />
+                                    );
+                                 })}
+                              </svg>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                 <IconSparkles className="w-8 h-8 text-indigo-500 mb-1" />
+                                 <span className="text-[10px] font-black text-slate-400 uppercase">Team Pool</span>
+                              </div>
+                           </div>
+                           <div className="mt-8 grid grid-cols-2 gap-x-6 gap-y-2">
+                              {leaderboardData.slice(0, 6).map((p, i) => {
+                                 const total = leaderboardData.reduce((sum, item) => sum + item.revenue, 0);
+                                 const percent = Math.round((p.revenue / total) * 100);
+                                 const colors = ['bg-[#f59e0b]', 'bg-[#6366f1]', 'bg-[#10b981]', 'bg-[#8b5cf6]', 'bg-[#f43f5e]', 'bg-[#06b6d4]'];
+                                 return (
+                                    <div key={p.id} className="flex items-center gap-2">
+                                       <div className={`w-2 h-2 rounded-full ${colors[i]}`} />
+                                       <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 truncate w-24">{p.name}</span>
+                                       <span className="text-[10px] font-black text-slate-400">{percent}%</span>
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+               )}
+            </div>
+         )}
+      </div>
    );
 };

@@ -72,6 +72,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [referralCommissionRate, setReferralCommissionRate] = useState(0);
     const [commissionActivation, setCommissionActivation] = useState(1000);
 
+    const getCycleForDate = (date: Date | string | number) => {
+        const d = new Date(date).getTime();
+        return payCycles.find(c => {
+            const start = new Date(c.startDate).getTime();
+            const end = new Date(c.endDate).setHours(23, 59, 59, 999);
+            return d >= start && d <= end;
+        });
+    };
+
     const refreshData = useCallback(async () => {
         // Ideally we might check if user is logged in, but some public data might be needed (rare here)
         // For now, we fetch if user exists, or if we want to support a public dashboard later.
@@ -135,7 +144,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (cycles) setPayCycles(cycles.map(c => ({ ...c, startDate: c.start_date, endDate: c.end_date })));
             if (logs) setActivityLogs(logs.map(l => ({ ...l, userId: l.user_id, userName: l.user_name, relatedId: l.related_id })));
             if (incentives) setAllIncentives(incentives.map(i => {
-                const isActivation = (i.label || '').toLowerCase().includes('activation');
+                const isActivation = (i.label || '').toLowerCase().includes('activat');
                 return {
                     ...i,
                     userId: i.user_id,
@@ -159,25 +168,94 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     isPendingActivation: r.is_pending_activation || false,
                     createdAt: r.created_at
                 })));
-            }
-
-            if (settings) {
+            }            if (settings) {
                 setCommissionRate(settings.commission_standard);
                 setSelfCommissionRate(settings.commission_self);
                 setReferralCommissionRate(settings.commission_referral ?? 0);
                 setCommissionActivation(Math.min(settings.commission_activation || 1000, 1000));
             }
 
-            // Maintenance & Data Integrity: Fix oversized activation incentives ($1000 error)
-            if (incentives) {
-                const badOnes = incentives.filter(i =>
-                    (i.label?.includes('Activation') || i.label?.includes('Activated')) &&
-                    (i.amount_cents > 1000)
-                );
-                if (badOnes.length > 0) {
-                    console.warn(`[REPAIR] Correcting ${badOnes.length} inflated activation incentives.`);
-                    for (const b of badOnes) {
-                        await supabase.from('incentives').update({ amount_cents: 1000 }).eq('id', b.id);
+            // Maintenance & Data Integrity
+            if (incentives && appointments && cycles) {
+                const payCyclesForRepair = cycles.map((c: any) => ({ id: c.id, startDate: c.start_date, endDate: c.end_date }));
+
+                const getCycleForDateLocal = (date: string | null | undefined) => {
+                    if (!date) return null;
+                    const d = new Date(date).getTime();
+                    return payCyclesForRepair.find((c: any) => {
+                        const start = new Date(c.startDate).getTime();
+                        const end = new Date(c.endDate).setHours(23, 59, 59, 999);
+                        return d >= start && d <= end;
+                    }) || null;
+                };
+
+                let repairsMade = false;
+
+                // 1. Remove duplicate activation incentives per appointment
+                const seenApptIds = new Set<string>();
+                const duplicates = incentives.filter((i: any) => {
+                    if (!i.related_appointment_id || !i.label?.toLowerCase().includes('activat')) return false;
+                    if (seenApptIds.has(i.related_appointment_id)) return true;
+                    seenApptIds.add(i.related_appointment_id);
+                    return false;
+                });
+                if (duplicates.length > 0) {
+                    console.warn(`[REPAIR] Removing ${duplicates.length} duplicate activation records.`);
+                    for (const d of duplicates) {
+                        await supabase.from('incentives').delete().eq('id', d.id);
+                    }
+                    repairsMade = true;
+                }
+
+                // 2. Re-pin incentives to cycle matching actual activation event date
+                const freshIncentives = duplicates.length > 0
+                    ? (await supabase.from('incentives').select('*')).data || incentives
+                    : incentives;
+
+                for (const i of freshIncentives) {
+                    if (!i.label?.toLowerCase().includes('activat')) continue;
+                    const appt = appointments.find((a: any) => a.id === i.related_appointment_id);
+
+                    // Use the appointment's own timestamps as source of truth.
+                    // activated_at -> onboarded_at -> scheduled_at (in that priority order).
+                    // NEVER use i.created_at alone because backfilled records have today's date.
+                    const eventDate = appt?.activated_at || appt?.onboarded_at || appt?.scheduled_at;
+                    if (!eventDate) continue;
+
+                    const correctCycle = getCycleForDateLocal(eventDate);
+                    if (correctCycle && correctCycle.id !== i.applied_cycle_id) {
+                        console.warn(`[REPAIR] Re-pinning incentive ${i.id}: cycle ${i.applied_cycle_id} → ${correctCycle.id} (appt event: ${eventDate})`);
+                        await supabase.from('incentives').update({ applied_cycle_id: correctCycle.id }).eq('id', i.id);
+                        repairsMade = true;
+                    }
+                    // Fix user_id if mismatched
+                    if (appt && appt.user_id && appt.user_id !== i.user_id) {
+                        await supabase.from('incentives').update({ user_id: appt.user_id }).eq('id', i.id);
+                        repairsMade = true;
+                    }
+                    // Cap oversized amounts
+                    if ((i.amount_cents || 0) > 1000) {
+                        await supabase.from('incentives').update({ amount_cents: 1000 }).eq('id', i.id);
+                        repairsMade = true;
+                    }
+                }
+
+                // 3. If any repairs were made, re-fetch incentives so in-memory state is accurate
+                if (repairsMade) {
+                    const { data: freshFixed } = await supabase.from('incentives').select('*');
+                    if (freshFixed) {
+                        setAllIncentives(freshFixed.map((i: any) => {
+                            const isActivation = (i.label || '').toLowerCase().includes('activat');
+                            return {
+                                ...i,
+                                userId: i.user_id,
+                                amountCents: isActivation ? Math.min(i.amount_cents || 0, 1000) : (i.amount_cents || 0),
+                                appliedCycleId: i.applied_cycle_id,
+                                createdAt: i.created_at,
+                                relatedAppointmentId: i.related_appointment_id,
+                                ruleId: i.rule_id
+                            };
+                        }));
                     }
                 }
             }
@@ -234,9 +312,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [user, refreshData]);
 
     const activeCycle = useMemo(() => {
-        const n = Date.now();
-        return payCycles.find(c => n >= new Date(c.startDate).getTime() && n <= new Date(c.endDate).setHours(23, 59, 59, 999));
-    }, [payCycles]);
+        return getCycleForDate(Date.now());
+    }, [payCycles, getCycleForDate]);
 
     const handleConvertReminderToAppointment = useCallback(async (reminder: Reminder, stage: AppointmentStage) => {
         if (!user) return;
@@ -246,7 +323,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (stage === AppointmentStage.ONBOARDED) {
             earnedAmount = commissionRate;
         } else if (stage === AppointmentStage.ACTIVATED) {
-            earnedAmount = commissionActivation;
+            // Usually, activations from reminders skip the initial onboard commission 
+            // and earn only the activation reward.
+            earnedAmount = 0;
         }
         const dbData = {
             id: targetId,
@@ -375,27 +454,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             bonus = await processOnboardingIncentives(finalUserId, targetId);
         }
 
-        if (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) {
-            // logMode may be provided when using the form
-            const mode: 'onboard' | 'activation' | undefined = data.logMode;
-            // If created via activation form, we still want an onboard timestamp so the record shows up in cycles
-            if (mode === 'activation' && !originalAppt) {
-                // will be handled by updateProps below (isNowOnboarded ensures onboarded_at is set)
-            }
+        const eventDate = ((data.stage === AppointmentStage.ONBOARDED || data.stage === AppointmentStage.ACTIVATED) && !originalAppt?.onboardedAt) ? now.toISOString() : (originalAppt?.onboardedAt || now.toISOString());
+        const activatedDate = (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? now.toISOString() : (originalAppt?.activatedAt || now.toISOString());
 
-            if (activeCycle) {
-                const activationBonus = Math.min(commissionActivation, 1000); // Hard cap at $10
-                await supabase.from('incentives').insert({
-                    id: generateId(),
-                    user_id: finalUserId,
-                    amount_cents: activationBonus,
-                    label: `Partner Activation: ${data.name}`,
-                    applied_cycle_id: activeCycle.id,
-                    related_appointment_id: targetId,
-                    created_at: now.toISOString()
-                });
+        if (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) {
+            const targetCycle = getCycleForDate(activatedDate);
+            if (targetCycle) {
+                // Only create if one doesn't exist for this ID
+                const existing = allIncentives.find(i => i.relatedAppointmentId === targetId && i.label.toLowerCase().includes('activat'));
+                if (!existing) {
+                    const activationBonus = Math.min(commissionActivation, 1000); 
+                    await supabase.from('incentives').insert({
+                        id: generateId(),
+                        user_id: finalUserId,
+                        amount_cents: activationBonus,
+                        label: `Partner Activation: ${data.name}`,
+                        applied_cycle_id: targetCycle.id,
+                        related_appointment_id: targetId,
+                        created_at: activatedDate
+                    });
+                }
             } else {
-                console.warn('Cannot assign activation bonus: No active pay cycle.');
+                console.warn('Cannot assign activation bonus: Date falls outside defined pay cycles.');
             }
         }
 
@@ -419,10 +499,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             user_id: finalUserId,
             type: data.type || 'appointment',
             ae_name: data.aeName,
-            earned_amount: (data.stage === AppointmentStage.ONBOARDED || data.stage === AppointmentStage.ACTIVATED) ? baseRate : 0,
-            referral_count: data.referralCount || 0,
-            onboarded_at: ((data.stage === AppointmentStage.ONBOARDED || data.stage === AppointmentStage.ACTIVATED) && !originalAppt?.onboardedAt) ? now.toISOString() : originalAppt?.onboardedAt,
-            activated_at: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? now.toISOString() : originalAppt?.activatedAt,
+            // Skip base commission if explicitly logging a new activation (skipping onboard fee)
+            earned_amount: (data.stage === AppointmentStage.ONBOARDED || (data.stage === AppointmentStage.ACTIVATED && data.logMode !== 'activation')) ? baseRate : 0,
+            referral_count: (data.stage === AppointmentStage.ACTIVATED) ? (data.referralCount || 1) : (data.referralCount || 0),
+            onboarded_at: eventDate,
+            activated_at: activatedDate,
             original_user_id: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt && originalAppt?.userId !== finalUserId) ? originalAppt?.userId : (originalAppt?.originalUserId || null),
             original_onboard_type: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? (originalAppt?.aeName === (allUsers.find(u => u.id === originalAppt?.userId)?.name) ? 'self' : 'transfer') : (originalAppt?.originalOnboardType || null),
             original_ae_name: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? (originalAppt?.aeName || null) : (originalAppt?.originalAeName || null),
@@ -477,17 +558,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             if (stage === AppointmentStage.ACTIVATED && appt.stage !== AppointmentStage.ACTIVATED) {
-                if (!activeCycle) throw new Error("Active Payout Window Required");
-                // Allow activation by any team member; credit the activator
-                await supabase.from('incentives').insert({
-                    id: generateId(),
-                    user_id: user?.id || appt.userId,
-                    amount_cents: Math.min(commissionActivation, 1000), // Hard-cap $10
-                    label: `Partner Activation: ${appt.name}`,
-                    applied_cycle_id: activeCycle.id,
-                    related_appointment_id: id,
-                    created_at: new Date().toISOString()
-                });
+                const nowISO = new Date().toISOString();
+                const targetCycle = getCycleForDate(nowISO);
+                if (!targetCycle) throw new Error("Event date falls outside any defined Payout Window");
+                
+                // Only insert if no activation incentive already exists for this appointment
+                const existing = allIncentives.find(i => i.relatedAppointmentId === id && i.label.toLowerCase().includes('activat'));
+                if (!existing) {
+                    await supabase.from('incentives').insert({
+                        id: generateId(),
+                        user_id: appt.userId,
+                        amount_cents: Math.min(commissionActivation, 1000), // Hard-cap $10
+                        label: `Partner Activation: ${appt.name}`,
+                        applied_cycle_id: targetCycle.id,
+                        related_appointment_id: id,
+                        created_at: nowISO
+                    });
+                }
             }
 
             // 4. Update the Appointment Record
@@ -552,11 +639,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const windows: EarningWindow[] = [...uniqueCycles].sort((a: PayCycle, b: PayCycle) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime()).reduce<EarningWindow[]>((acc: EarningWindow[], cycle: PayCycle) => {
             const start = new Date(cycle.startDate).getTime(); const end = new Date(cycle.endDate).setHours(23, 59, 59, 999);
             if (start > now) return acc;
+
+            // Onboard appointments: use onboardedAt. Activated appointments: use activatedAt.
+            // This is the same logic as UserAnalytics - must be consistent.
             const cycleAppts = onboardedOnly.filter(a => {
+                if (a.stage === AppointmentStage.ACTIVATED) {
+                    const d = new Date(a.activatedAt || a.onboardedAt || a.scheduledAt).getTime();
+                    return d >= start && d <= end;
+                }
                 const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
                 return d >= start && d <= end;
             });
-            const cycleIncentives = relevantIncentives.filter(i => i.appliedCycleId === cycle.id);
+
+            // Incentives: filter by appliedCycleId first, then cross-validate activation
+            // incentives against the linked appointment's actual closing date.
+            const cycleIncentives = relevantIncentives.filter(i => {
+                if (i.appliedCycleId !== cycle.id) return false;
+                // Cross-validate activation incentives against appointment date
+                if (i.label?.toLowerCase().includes('activat') && i.relatedAppointmentId) {
+                    const linkedAppt = onboardedOnly.find(a => a.id === i.relatedAppointmentId)
+                        || relevantAppts.find(a => a.id === i.relatedAppointmentId);
+                    if (linkedAppt) {
+                        const eventDate = new Date(linkedAppt.activatedAt || linkedAppt.onboardedAt || linkedAppt.scheduledAt || 0).getTime();
+                        return eventDate >= start && eventDate <= end;
+                    }
+                }
+                return true;
+            });
 
             const cycleProdTotal = cycleAppts.reduce((s, a) => {
                 const base = a.earnedAmount || 0;

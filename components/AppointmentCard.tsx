@@ -79,12 +79,30 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
   const relative = getRelativeTime(appointment.scheduledAt);
   const isOverdue = relative.isPast && (appointment.stage === AppointmentStage.PENDING || appointment.stage === AppointmentStage.RESCHEDULED);
 
+  const isActivated = appointment.stage === AppointmentStage.ACTIVATED;
+  const isOnboarded = appointment.stage === AppointmentStage.ONBOARDED;
+
   return (
     <div
       onClick={() => onView ? onView(appointment) : onEdit(appointment)}
-      className={`bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border transition-all duration-200 group cursor-pointer relative ${isRecentReferral ? 'border-emerald-500 dark:border-emerald-700 ring-2 ring-emerald-500/20' : isOverdue ? 'border-rose-200 dark:border-rose-900/50 bg-rose-50/10' : 'border-slate-100 dark:border-slate-700/50 hover:border-indigo-100 dark:hover:border-indigo-900/50 hover:shadow-md'}`}
+      className={`bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border transition-all duration-200 group cursor-pointer relative ${
+        isActivated
+          ? 'border-sky-300 dark:border-sky-700 ring-2 ring-sky-400/20'
+          : isRecentReferral
+          ? 'border-emerald-500 dark:border-emerald-700 ring-2 ring-emerald-500/20'
+          : isOverdue
+          ? 'border-rose-200 dark:border-rose-900/50 bg-rose-50/10'
+          : 'border-slate-100 dark:border-slate-700/50 hover:border-indigo-100 dark:hover:border-indigo-900/50 hover:shadow-md'
+      }`}
     >
-      {isRecentReferral && (
+      {isActivated && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 animate-in slide-in-from-bottom-1">
+          <span className="flex items-center gap-1.5 px-3 py-1 bg-sky-600 text-white rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg shadow-sky-200 dark:shadow-none whitespace-nowrap">
+            <IconRocket className="w-3 h-3" /> Activated Partner
+          </span>
+        </div>
+      )}
+      {!isActivated && isRecentReferral && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 animate-in slide-in-from-bottom-1">
           <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 text-white rounded-full text-[9px] font-black uppercase tracking-widest shadow-lg shadow-emerald-200 dark:shadow-none whitespace-nowrap">
             <IconRocket className="w-3 h-3" /> Partner Activated
@@ -288,7 +306,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
             <div className="flex justify-between items-center text-[9px] sm:text-[10px] text-slate-400 w-full">
               <div className="flex items-center gap-1">
                 {appointment.activatedAt ? (
-                  <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold uppercase">
+                  <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400 font-bold uppercase">
                     <IconCheck className="w-3 h-3" />
                     <span className="hidden xs:inline">Activated</span>
                     <span className="inline xs:hidden">✓</span>
@@ -297,7 +315,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
                   <span className="uppercase font-medium">Pending</span>
                 )}
               </div>
-              <span className="font-bold text-emerald-500 whitespace-nowrap ml-1">+{formatCurrency(totalPayout)}</span>
+              <span className={`font-bold ${isActivated ? 'text-sky-500' : 'text-emerald-500'} whitespace-nowrap ml-1`}>+{formatCurrency(totalPayout)}</span>
             </div>
           </>
         ) : (

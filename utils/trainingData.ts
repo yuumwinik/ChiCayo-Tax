@@ -166,6 +166,17 @@ export const TRAINING_CONTENT = {
         { partner: "Refund Advantage / EPS", amount: "12.5% Rev Share", breakdown: "12.5% of total resolution fee. Paid as fees are received." },
         { partner: "Drake Software", amount: "Software Integrated", breakdown: "Direct referral button within Drake. Earn through direct commissions or volume bonuses." }
     ],
+    earningRules: {
+        standardOnboard: { amount: 2000, label: "$20.00", rule: "Earned when an AE successfully onboards your transferred lead." },
+        selfOnboard: { amount: 2100, label: "$21.00", rule: "Premium rate earned when you handle the AE onboarding call yourself." },
+        activationBonus: { amount: 1000, label: "$10.00", rule: "Earned when an onboarded partner sends their very first referral (Activation)." },
+        payoutTimelines: "Cycle earnings are calculated at the end of each window. Payouts are typically processed Friday-Monday following a cycle close."
+    },
+    cycleFaqs: [
+        { q: "When does the pay cycle end?", a: "Pay cycles close every Friday at 6:00 PM unless otherwise noted in the Admin dashboard." },
+        { q: "What is an 'Activated' partner?", a: "A partner is 'Activated' as soon as they send their first referral. This triggers a one-time $10 bonus in the cycle the referral was received." },
+        { q: "Why didn't my deal show up this cycle?", a: "Deals are recorded based on the date they are moved to 'Onboarded' or 'Activated'. If a deal was closed after Friday 6PM, it falls into the next cycle." }
+    ],
     pricing: {
         investigation: {
             standard: "$499 / $549",

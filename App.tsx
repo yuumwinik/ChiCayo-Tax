@@ -18,7 +18,7 @@ import { UserAnalytics } from './components/UserAnalytics';
 import { EducationCenter } from './components/EducationCenter';
 import { RemindersView } from './components/RemindersView';
 import { NotificationPods } from './components/NotificationPods';
-import { IconMenu, IconMoon, IconPlus, IconSearch, IconSun, getAvatarIcon, IconTrash, IconTrophy, IconSparkles, IconTransfer, IconActivity, IconX, IconCheck, IconClock, IconAlertCircle, IconAlertTriangle, IconLayout } from './components/Icons';
+import { IconMenu, IconMoon, IconPlus, IconSearch, IconSun, getAvatarIcon, IconTrash, IconTrophy, IconSparkles, IconTransfer, IconActivity, IconX, IconCheck, IconClock, IconAlertCircle, IconAlertTriangle, IconLayout, IconDollarSign } from './components/Icons';
 
 import { ReminderModal } from './components/ReminderModal';
 import { calculatePeakTime } from './utils/analyticsUtils';
@@ -560,12 +560,17 @@ export default function App() {
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2 sm:gap-4 ml-auto flex-shrink-0">
-                            <button onClick={() => setDarkMode(!darkMode)} className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg hover:scale-105 active:scale-95 transition-all outline-none" title="Toggle dark mode">
+                        <div className="flex items-center gap-3 ml-auto flex-shrink-0 bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <button onClick={() => setDarkMode(!darkMode)} className="p-2 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-white dark:hover:bg-slate-700 hover:shadow-sm transition-all outline-none" title="Toggle dark mode">
                                 {darkMode ? <IconSun className="w-5 h-5" /> : <IconMoon className="w-5 h-5" />}
                             </button>
-                            <div id="wallet-pill" className="hidden xs:flex items-center gap-2 px-3 sm:px-4 py-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full font-black text-xs sm:text-sm hover:scale-105 active:scale-95 transition-all outline-none border border-emerald-100 dark:border-emerald-800 shadow-sm cursor-pointer whitespace-nowrap" onClick={() => setIsEarningsPanelOpen(true)}>{formatCurrency(displayEarnings.current?.totalCents || 0)}</div>
-                            <button onClick={() => setCurrentView('profile')} className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-lg shadow-indigo-100 dark:shadow-none hover:scale-105 active:scale-95 transition-all outline-none overflow-hidden flex-shrink-0" title="Profile">{user.avatarId && user.avatarId !== 'initial' ? <div className="w-6 h-6">{getAvatarIcon(user.avatarId)}</div> : user.name.charAt(0).toUpperCase()}</button>
+                            <div id="wallet-pill" className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl font-black text-xs sm:text-sm hover:scale-105 active:scale-95 transition-all outline-none border border-emerald-400 shadow-md cursor-pointer whitespace-nowrap" onClick={() => setIsEarningsPanelOpen(true)}>
+                                <IconDollarSign className="w-4 h-4" />
+                                {formatCurrency(displayEarnings.current?.totalCents || 0)}
+                            </div>
+                            <button onClick={() => setCurrentView('profile')} className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-lg shadow-indigo-100 dark:shadow-none hover:scale-105 active:scale-95 transition-all outline-none overflow-hidden flex-shrink-0" title="Profile">
+                                {user.avatarId && user.avatarId !== 'initial' ? <div className="w-7 h-7">{getAvatarIcon(user.avatarId)}</div> : user.name.charAt(0).toUpperCase()}
+                            </button>
                         </div>
                     </header>
 
@@ -702,10 +707,6 @@ export default function App() {
                                                                             })}
                                                                     </div>
 
-                                                                    <div className="pb-40">
-                                                                        <ReferralMomentumWidget appointments={allAppointments} activeCycle={activeCycle} onViewAppt={a => handleOpenBusinessCard(a)} users={allUsers} allIncentives={allIncentives} />
-                                                                    </div>
-
                                                                     {allAppointments.length === 0 && (
                                                                         <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-700">
                                                                             <div className="w-32 h-32 bg-slate-50 dark:bg-slate-800 rounded-[3rem] flex items-center justify-center mb-8"><IconCheck className="w-16 h-16 text-slate-200" /></div>
@@ -737,9 +738,9 @@ export default function App() {
                 </ErrorBoundary>
                 <DeleteConfirmationModal isOpen={deleteConfirmation.isOpen} onClose={() => setDeleteConfirmation({ isOpen: false, id: null })} onConfirm={() => handleDeleteAppointment(deleteConfirmation.id!).then(() => setDeleteConfirmation({ isOpen: false, id: null }))} title="Confirm Removal" message="Permanently delete this item?" />
                 <AESelectionModal isOpen={isAEModalOpen} onClose={() => setIsAEModalOpen(false)} agentName={user?.name} onConfirm={ae => { if (pendingMove) { handleMoveStage(pendingMove.id, pendingMove.stage, false).then(() => { supabase.from('appointments').update({ ae_name: ae }).eq('id', pendingMove.id).then(() => { setPendingMove(null); refreshData(); }); }); } }} />
-                <EarningsPanel isOpen={isEarningsPanelOpen} onClose={() => setIsEarningsPanelOpen(false)} onViewAll={() => { setIsEarningsPanelOpen(false); setCurrentView('earnings-full'); }} currentWindow={displayEarnings.current} history={displayEarnings.history} lifetimeEarnings={displayEarnings.lifetime} teamEarnings={isAdmin ? displayEarnings.lifetime : undefined} teamCurrentPool={isAdmin ? teamCurrentCycleTotal : undefined} isTeamView={isAdmin} referralRate={referralCommissionRate} allAppointments={allAppointments} allIncentives={allIncentives} currentUserName={user.name} />
+                <EarningsPanel isOpen={isEarningsPanelOpen} onClose={() => setIsEarningsPanelOpen(false)} onViewAll={() => { setIsEarningsPanelOpen(false); setCurrentView('earnings-full'); }} currentWindow={displayEarnings.current} history={displayEarnings.history} lifetimeEarnings={displayEarnings.lifetime} teamEarnings={isAdmin ? displayEarnings.lifetime : undefined} teamCurrentPool={isAdmin ? teamCurrentCycleTotal : undefined} isTeamView={isAdmin} referralRate={referralCommissionRate} allAppointments={allAppointments} allIncentives={allIncentives} currentUserName={user.name} currentUserId={user.id} />
 
-                <TaxterChat user={user} allAppointments={allAppointments} allEarnings={displayEarnings.history} payCycles={payCycles} allUsers={allUsers} onNavigate={setCurrentView} activeCycle={activeCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralCommissionRate={referralCommissionRate} reminders={reminders} />
+                <TaxterChat user={user} allAppointments={allAppointments} allEarnings={displayEarnings.history} payCycles={payCycles} allUsers={allUsers} onNavigate={setCurrentView} activeCycle={activeCycle} commissionRate={commissionRate} selfCommissionRate={selfCommissionRate} referralCommissionRate={referralCommissionRate} reminders={reminders} allIncentives={allIncentives} />
 
                 <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] flex flex-col-reverse gap-3 pointer-events-none items-center">
                     {toasts.map(t => (

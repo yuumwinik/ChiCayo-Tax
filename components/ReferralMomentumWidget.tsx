@@ -10,6 +10,7 @@ interface ReferralMomentumWidgetProps {
     referralRate?: number;
     users: User[];
     allIncentives: any[];
+    currentUserId?: string;
 }
 
 export const ReferralMomentumWidget: React.FC<ReferralMomentumWidgetProps> = ({
@@ -18,15 +19,22 @@ export const ReferralMomentumWidget: React.FC<ReferralMomentumWidgetProps> = ({
     onViewAppt,
     referralRate,
     users,
-    allIncentives
+    allIncentives,
+    currentUserId
 }) => {
     const activeReferrals = useMemo(() => {
         if (!activeCycle || !allIncentives) return [];
 
+        // Filter incentives to ONLY those belonging to the current user (unless admin)
+        // Or if 'users' filter is not possible, we should just ensure we match the right owner.
+        // The user said: "Only The Owner show have views of their activations."
+        
         const cycleIncentives = allIncentives.filter(i =>
             i.appliedCycleId === activeCycle.id &&
             i.label.toLowerCase().includes('activation') &&
-            i.relatedAppointmentId
+            i.relatedAppointmentId &&
+            // If there's an owner filter, apply it
+            (!currentUserId || i.userId === currentUserId)
         );
 
         return appointments
@@ -38,7 +46,7 @@ export const ReferralMomentumWidget: React.FC<ReferralMomentumWidgetProps> = ({
                 return { ...a, cycleCount, cycleBonus };
             })
             .sort((a, b) => b.cycleBonus - a.cycleBonus);
-    }, [appointments, activeCycle, allIncentives]);
+    }, [appointments, activeCycle, allIncentives, currentUserId]);
 
     const totalActivations = useMemo(() => activeReferrals.reduce((sum, r) => sum + (r.cycleCount || 0), 0), [activeReferrals]);
 

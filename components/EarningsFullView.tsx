@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { EarningWindow, Appointment, AppointmentStage, AE_COLORS, User, Incentive } from '../types';
 import { formatCurrency, formatDate } from '../utils/dateUtils';
-import { IconDollarSign, IconChevronDown, IconChevronUp, IconTrash, IconUser, getAvatarIcon, IconDownload, IconX, IconStack, IconSparkles, IconActivity, IconTrendingUp } from './Icons';
+import { IconDollarSign, IconChevronDown, IconChevronUp, IconTrash, IconUser, getAvatarIcon, IconDownload, IconX, IconStack, IconSparkles, IconActivity, IconTrendingUp, IconRocket } from './Icons';
 import { CustomSelect } from './CustomSelect';
 
 interface EarningsFullViewProps {
@@ -163,16 +163,22 @@ export const EarningsFullView: React.FC<EarningsFullViewProps> = ({
           <tr className="bg-slate-50/50 dark:bg-slate-900/30">
             <td colSpan={6} className="p-6">
               <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-inner">
-                {winIncentives.map(inc => (
-                  <div key={inc.id} className="p-4 flex justify-between border-b border-slate-50 dark:border-slate-700 bg-indigo-50/20">
-                    <div className="flex items-center gap-3"><IconSparkles className="w-4 h-4 text-indigo-500" /><span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">{inc.label}</span></div>
-                    <span className="text-xs font-black text-indigo-600">+{formatCurrency(inc.amountCents)}</span>
-                  </div>
-                ))}
+                {winIncentives.map(inc => {
+                  const isActivation = (inc.label || '').toLowerCase().includes('activation');
+                  return (
+                    <div key={inc.id} className={`p-4 flex justify-between border-b border-slate-50 dark:border-slate-700 ${isActivation ? 'bg-sky-50 dark:bg-sky-900/10' : 'bg-indigo-50/20'}`}>
+                      <div className="flex items-center gap-3">
+                        {isActivation ? <IconRocket className="w-4 h-4 text-sky-500" /> : <IconSparkles className="w-4 h-4 text-indigo-500" />}
+                        <span className={`text-xs font-bold ${isActivation ? 'text-sky-700 dark:text-sky-300' : 'text-indigo-700 dark:text-indigo-300'}`}>{inc.label}</span>
+                      </div>
+                      <span className={`text-xs font-black ${isActivation ? 'text-sky-600' : 'text-indigo-600'}`}>+{formatCurrency(inc.amountCents)}</span>
+                    </div>
+                  );
+                })}
                 {winAppts.map(appt => (
                   <div key={appt.id} className="p-4 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors border-b last:border-0 border-slate-50 dark:border-slate-700">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${appt.aeName === users.find(u => u.id === appt.userId)?.name ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-100 text-indigo-600'}`}>{appt.name.charAt(0)}</div>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${appt.stage === AppointmentStage.ACTIVATED ? 'bg-sky-100 text-sky-600' : (appt.aeName === users.find(u => u.id === appt.userId)?.name ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-100 text-indigo-600')}`}>{appt.name.charAt(0)}</div>
                       <div><div className="text-xs font-bold text-slate-900 dark:text-white">{appt.name}</div><div className="text-[9px] font-black text-slate-400 uppercase">{appt.aeName || 'Self'} • {appt.referralCount || 0} Referrals</div></div>
                     </div>
                     <div className="text-right">
