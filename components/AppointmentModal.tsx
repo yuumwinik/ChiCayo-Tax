@@ -225,6 +225,7 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
       aeName: finalAeName,
       scheduledAt,
       stage: finalStage,
+      logMode: formData.type === 'activation' ? 'activation' : undefined,
       id: (formData.type === 'activation' && matchInfo?.id) ? matchInfo.id : initialData?.id
     });
     onClose();

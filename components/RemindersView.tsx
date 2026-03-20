@@ -1,9 +1,8 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Reminder, AppointmentStage } from '../types';
 import { useData } from '../contexts/DataContext';
 import { useUser } from '../contexts/UserContext';
-import { IconPlus, IconTrash, IconEdit, IconPhone, IconMail, IconClock, IconCalendar, IconTransfer, IconActivity, IconCheck, IconSearch, IconX, IconAlertTriangle } from './Icons';
+import { IconPlus, IconTrash, IconEdit, IconPhone, IconMail, IconClock, IconCalendar, IconTransfer, IconCheck, IconSearch, IconX } from './Icons';
 import { formatDate } from '../utils/dateUtils';
 
 interface RemindersViewProps {
@@ -14,7 +13,7 @@ interface RemindersViewProps {
 }
 
 export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal, onDeleteReminder, onSaveAppointment, onConvertReminderToAppointment }) => {
-    const { reminders, refreshData } = useData();
+    const { reminders } = useData();
     const { user } = useUser();
     const [searchQuery, setSearchQuery] = useState('');
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -33,40 +32,27 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal, onDel
         return items.sort((a, b) => new Date(a.callBackAt).getTime() - new Date(b.callBackAt).getTime());
     }, [reminders, searchQuery, user]);
 
-    const convertToAppointment = async (reminder: Reminder, stage: AppointmentStage) => {
-        try {
-            await onSaveAppointment({
-                name: reminder.name,
-                phone: reminder.phone,
-                email: reminder.email,
-                scheduledAt: reminder.callBackAt,
-                stage: stage,
-                notes: `Converted from Reminder: ${reminder.notes || ''}`
-            });
-            await onDeleteReminder(reminder.id);
-            // Notification is handled by the wrapper
-        } catch (err) {
-            console.error("Conversion error:", err);
-        }
-    };
-
     return (
-        <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div>
-                    <h1 className="text-4xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-3">
-                        <IconClock className="w-10 h-10 text-indigo-600" />
-                        Partner Reminders
-                    </h1>
-                    <p className="text-slate-500 font-medium mt-1">Private callback queue. Cloud-synced across your devices.</p>
+        <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto flex flex-col h-full">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 shrink-0">
+                <div className="flex items-center gap-6">
+                    <div>
+                        <h1 className="text-4xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-3">
+                            <IconClock className="w-10 h-10 text-indigo-600" />
+                            Partner Reminders
+                        </h1>
+                        <p className="text-slate-500 font-medium mt-1">
+                            Private callback queue. Cloud-synced across your devices.
+                        </p>
+                    </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <div className="relative group flex-1 md:w-64">
+                <div className="flex items-center gap-4">
+                    <div className="relative group w-48 hidden lg:block">
                         <IconSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                         <input
                             type="text"
-                            placeholder="Search reminders..."
+                            placeholder="Search..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl py-3 pl-12 pr-4 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none"
@@ -81,27 +67,29 @@ export const RemindersView: React.FC<RemindersViewProps> = ({ onOpenModal, onDel
                 </div>
             </div>
 
-            {filteredReminders.length === 0 ? (
-                <div className="py-20 text-center bg-white dark:bg-slate-900 rounded-[3rem] border-2 border-dashed border-slate-100 dark:border-slate-800">
-                    <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 opacity-50">
-                        <IconCalendar className="w-10 h-10 text-slate-300" />
+            <div className="flex-1 overflow-auto pr-2">
+                {filteredReminders.length === 0 ? (
+                    <div className="py-20 text-center bg-white dark:bg-slate-900 rounded-[3rem] border-2 border-dashed border-slate-100 dark:border-slate-800">
+                        <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 opacity-50">
+                            <IconCalendar className="w-10 h-10 text-slate-300" />
+                        </div>
+                        <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">No Active Reminders</h3>
+                        <p className="text-slate-500 max-w-xs mx-auto mt-2 font-medium">Use the + button to log partner callbacks and follow-ups.</p>
                     </div>
-                    <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">No Active Reminders</h3>
-                    <p className="text-slate-500 max-w-xs mx-auto mt-2 font-medium">Use the + button to log partner callbacks and follow-ups.</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredReminders.map(reminder => (
-                        <ReminderCard
-                            key={reminder.id}
-                            reminder={reminder}
-                            onEdit={() => onOpenModal(reminder)}
-                            onDelete={() => setDeleteConfirmId(reminder.id)}
-                            onConvert={onConvertReminderToAppointment}
-                        />
-                    ))}
-                </div>
-            )}
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-20">
+                        {filteredReminders.map(reminder => (
+                            <ReminderCard
+                                key={reminder.id}
+                                reminder={reminder}
+                                onEdit={() => onOpenModal(reminder)}
+                                onDelete={() => setDeleteConfirmId(reminder.id)}
+                                onConvert={onConvertReminderToAppointment}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
 
             {/* Delete Confirmation Inline Modal */}
             {deleteConfirmId && (

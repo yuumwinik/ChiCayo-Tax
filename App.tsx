@@ -23,6 +23,7 @@ import { IconMenu, IconMoon, IconPlus, IconSearch, IconSun, getAvatarIcon, IconT
 import { ReminderModal } from './components/ReminderModal';
 import { calculatePeakTime } from './utils/analyticsUtils';
 import { generateId, formatDate, formatCurrency } from './utils/dateUtils';
+import { CycleProgressIndicator } from './components/CycleProgressIndicator';
 import { CreateModal } from './components/CreateModal';
 import { AESelectionModal } from './components/AESelectionModal';
 import { BusinessCardModal } from './components/BusinessCardModal';
@@ -262,61 +263,7 @@ export default function App() {
         }
     }, [allIncentives, user, seenReferralIds]);
 
-    useEffect(() => {
-        if (!user || user.role === 'admin') return;
 
-        const checkMilestones = () => {
-            const onboarded = allAppointments.filter(a => a.userId === user.id && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED));
-            const activated = allAppointments.filter(a => a.userId === user.id && (a.stage === AppointmentStage.ACTIVATED || a.stage === AppointmentStage.TRANSFERRED));
-            const selfOnboarded = onboarded.filter(a => !a.aeName || a.aeName === user.name);
-            const lifetimeCents = displayEarnings.lifetime;
-
-            const newAchievements = new Set(achievements);
-            let triggered: any = null;
-
-            if (onboarded.length >= 100 && !achievements.has('100_ONBOARDS')) {
-                triggered = '100_ONBOARDS';
-            } else if (selfOnboarded.length >= 100 && !achievements.has('100_SELF')) {
-                triggered = '100_SELF';
-            } else if (lifetimeCents >= 100000 && !achievements.has('1000_EARNINGS')) {
-                triggered = '1000_EARNINGS';
-            } else if (lifetimeCents >= 50000 && !achievements.has('500_EARNINGS')) {
-                triggered = '500_EARNINGS';
-            } else if (activated.length >= 10 && !achievements.has('ACTIVATION_10')) {
-                triggered = 'ACTIVATION_10';
-            } else if (activated.length >= 5 && !achievements.has('ACTIVATION_5')) {
-                triggered = 'ACTIVATION_5';
-            } else if (activated.length >= 1 && !achievements.has('FIRST_ACTIVATION')) {
-                triggered = 'FIRST_ACTIVATION';
-            }
-
-            if (triggered) {
-                newAchievements.add(triggered);
-                setAchievements(newAchievements);
-                localStorage.setItem('achievements_v2', JSON.stringify([...newAchievements]));
-                setActiveCelebration(triggered);
-            }
-        };
-
-        const checkFridayRecap = () => {
-            const now = new Date();
-            const isFriday = now.getDay() === 5;
-            const isRecapTime = now.getHours() === 16 && now.getMinutes() >= 45;
-
-            if (isFriday && isRecapTime) {
-                const weekKey = `${now.getFullYear()}-W${Math.ceil(now.getDate() / 7)}`;
-                const lastRecap = localStorage.getItem('last_recap_week');
-                if (lastRecap !== weekKey) {
-                    setIsWeeklyRecapOpen(true);
-                    localStorage.setItem('last_recap_week', weekKey);
-                }
-            }
-        };
-
-        checkMilestones();
-        const interval = setInterval(checkFridayRecap, 60000);
-        return () => clearInterval(interval);
-    }, [allAppointments, user, displayEarnings.lifetime, achievements]);
 
     useEffect(() => {
         if (!user || user.role === 'admin') return;
@@ -354,25 +301,27 @@ export default function App() {
             }
         };
 
-        const checkFridayRecap = () => {
+        const checkEndCycleRecap = () => {
+            if (!activeCycle) return;
             const now = new Date();
-            const isFriday = now.getDay() === 5;
-            const isRecapTime = now.getHours() === 16 && now.getMinutes() >= 45;
+            const cycleEnd = new Date(activeCycle.endDate);
+            const isLastDay = now.getDate() === cycleEnd.getDate() && now.getMonth() === cycleEnd.getMonth() && now.getFullYear() === cycleEnd.getFullYear();
+            const isRecapTime = now.getHours() === 15 && now.getMinutes() >= 35 && now.getMinutes() < 60;
 
-            if (isFriday && isRecapTime) {
-                const weekKey = `${now.getFullYear()}-W${Math.ceil(now.getDate() / 7)}`;
-                const lastRecap = localStorage.getItem('last_recap_week');
-                if (lastRecap !== weekKey) {
+            if (isLastDay && isRecapTime) {
+                const cycleKey = activeCycle.id;
+                const lastRecap = localStorage.getItem('last_recap_cycle');
+                if (lastRecap !== cycleKey) {
                     setIsWeeklyRecapOpen(true);
-                    localStorage.setItem('last_recap_week', weekKey);
+                    localStorage.setItem('last_recap_cycle', cycleKey);
                 }
             }
         };
 
         checkMilestones();
-        const interval = setInterval(checkFridayRecap, 60000); // Check every minute
+        const interval = setInterval(checkEndCycleRecap, 60000); // Check every minute
         return () => clearInterval(interval);
-    }, [allAppointments, user, displayEarnings.lifetime, achievements]);
+    }, [allAppointments, user, displayEarnings.lifetime, achievements, activeCycle]);
 
     const handleDismissReferral = () => {
         if (referralAlert) {
@@ -456,30 +405,40 @@ export default function App() {
         if (!activeCycle) return;
         const onboarded = (isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)).filter(a => {
             if (a.stage !== AppointmentStage.ONBOARDED && a.stage !== AppointmentStage.ACTIVATED) return false;
+            // If it's the agent view (not admin), strictly show only owned data
+            if (!isAdmin && a.userId !== user?.id) return false;
+            
             const start = new Date(activeCycle.startDate).getTime();
             const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
             const onboardedTime = new Date(a.onboardedAt || a.scheduledAt).getTime();
+            const activatedTime = new Date(a.activatedAt || 0).getTime();
+            
+            // For activations, use the activatedAt date for cycle filtering
+            if (a.stage === AppointmentStage.ACTIVATED && a.activatedByUserId === user?.id) {
+                return activatedTime >= start && activatedTime <= end;
+            }
             return onboardedTime >= start && onboardedTime <= end;
         });
 
         const headers = ["ID", "Onboard/Activated Date", "Client", "Phone", "AE Name", "Type", "Referral Count", "Activation Reward", "Commission", "Total Payout", "Notes"];
         const rows = onboarded.map(a => {
             const isSelf = !a.aeName || a.aeName === user?.name;
-            const baseCommission = (a.earnedAmount || 0);
-            const refBonus = (a.referralCount || 0) * referralCommissionRate;
-            const incEntives = allIncentives.filter(i => i.relatedAppointmentId === a.id);
+            const isActivator = a.activatedByUserId === user?.id;
+            const baseCommission = (a.userId === user?.id) ? (a.earnedAmount || 0) : 0;
+            const refBonus = (a.userId === user?.id) ? (a.referralCount || 0) * referralCommissionRate : 0;
+            const incEntives = allIncentives.filter(i => i.relatedAppointmentId === a.id && i.userId === user?.id);
             const incTotal = incEntives.reduce((sum, i) => sum + i.amountCents, 0);
             const total = baseCommission + refBonus + incTotal;
 
             return [
                 a.id,
-                formatDate(a.onboardedAt || a.scheduledAt),
+                formatDate((isActivator && a.stage === AppointmentStage.ACTIVATED) ? (a.activatedAt || a.onboardedAt || a.scheduledAt) : (a.onboardedAt || a.scheduledAt)),
                 a.name.replace(/,/g, ""),
                 a.phone,
                 a.aeName || 'Self',
-                a.stage === AppointmentStage.ACTIVATED ? 'Activated Partner' : (isSelf ? 'Self Onboard' : 'AE Transfer'),
-                a.referralCount || 0,
-                a.stage === AppointmentStage.ACTIVATED ? (commissionActivation / 100).toFixed(2) : "0.00",
+                a.stage === AppointmentStage.ACTIVATED ? (isActivator ? 'My Activation' : 'Activated Partner') : (isSelf ? 'Self Onboard' : 'AE Transfer'),
+                a.userId === user?.id ? (a.referralCount || 0) : 0,
+                isActivator ? (commissionActivation / 100).toFixed(2) : "0.00",
                 (baseCommission / 100).toFixed(2),
                 (total / 100).toFixed(2),
                 (a.notes || "").replace(/,/g, ";")
@@ -551,7 +510,12 @@ export default function App() {
                             {/* Search - Hidden on small screens but preserves layout */}
                             <div className="relative group hidden sm:block flex-1">
                                 <IconSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 group-focus-within:text-indigo-500 transition-colors" />
-                                <input type="text" placeholder="Search partners..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-50 dark:bg-slate-800 border-none rounded-xl py-2.5 pl-11 pr-8 text-sm font-bold w-full focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-900 dark:text-white" />
+                                <input type="text" placeholder="Search partners..." value={searchQuery} onChange={(e) => {
+                                    setSearchQuery(e.target.value);
+                                    if (e.target.value && currentView !== 'onboarded' && currentView !== 'admin-dashboard') {
+                                        setCurrentView(user.role === 'admin' ? 'admin-dashboard' : 'onboarded');
+                                    }
+                                }} className="bg-slate-50 dark:bg-slate-800 border-none rounded-xl py-2.5 pl-11 pr-8 text-sm font-bold w-full focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-900 dark:text-white" />
                                 {searchQuery && (
                                     <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
                                         <IconX className="w-3.5 h-3.5" />
@@ -561,6 +525,7 @@ export default function App() {
                         </div>
 
                         <div className="flex items-center gap-3 ml-auto flex-shrink-0 bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <CycleProgressIndicator activeCycle={activeCycle} />
                             <button onClick={() => setDarkMode(!darkMode)} className="p-2 text-slate-600 dark:text-slate-400 rounded-xl hover:bg-white dark:hover:bg-slate-700 hover:shadow-sm transition-all outline-none" title="Toggle dark mode">
                                 {darkMode ? <IconSun className="w-5 h-5" /> : <IconMoon className="w-5 h-5" />}
                             </button>
@@ -610,14 +575,14 @@ export default function App() {
                                             referralRate={referralCommissionRate}
                                             activationRate={commissionActivation}
                                         />
-                                            : currentView === 'user-analytics' ? <div className="p-6 max-w-6xl mx-auto"><UserAnalytics appointments={allAppointments.filter(a => a.userId === user?.id)} allAppointments={allAppointments} allIncentives={allIncentives} earnings={displayEarnings} activeCycle={activeCycle} payCycles={payCycles} currentUserName={user?.name || ''} currentUser={user!} referralRate={referralCommissionRate} users={allUsers} onViewAppt={handleOpenBusinessCard} /></div>
+                                            : currentView === 'user-analytics' ? <div className="p-6 max-w-6xl mx-auto"><UserAnalytics appointments={allAppointments.filter(a => a.userId === user?.id || a.activatedByUserId === user?.id)} allAppointments={allAppointments} allIncentives={allIncentives} earnings={displayEarnings} activeCycle={activeCycle} payCycles={payCycles} currentUserName={user?.name || ''} currentUser={user!} referralRate={referralCommissionRate} users={allUsers} onViewAppt={handleOpenBusinessCard} /></div>
                                                 : currentView === 'calendar' ? <div className="p-6 max-w-6xl mx-auto"><CalendarView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={a => handleOpenBusinessCard(a, isAdmin ? allAppointments : allAppointments.filter(item => item.userId === user?.id))} userRole={user?.role || 'agent'} users={allUsers} activeCycle={activeCycle} /></div>
                                                     : currentView === 'onboarded' ? <div className="p-6 max-w-6xl mx-auto"><OnboardedView appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} searchQuery={searchQuery} onEdit={a => { setEditingAppt(a); setIsModalOpen(true); }} onView={(a, stack) => handleOpenBusinessCard(a, stack)} onDelete={id => setDeleteConfirmation({ isOpen: true, id })} users={allUsers} payCycles={payCycles} userRole={user?.role || 'agent'} currentWindow={displayEarnings.current} referralRate={referralCommissionRate} incentives={allIncentives} /></div>
                                                         : currentView === 'earnings-full' ? <div className="p-6 max-w-6xl mx-auto"><EarningsFullView history={displayEarnings.history} currentWindow={displayEarnings.current} appointments={isAdmin ? allAppointments : allAppointments.filter(a => a.userId === user?.id)} users={allUsers} userRole={user?.role || 'agent'} currentUserName={user?.name || ''} onDismissCycle={id => supabase.from('users').update({ dismissed_cycle_ids: [...(user?.dismissedCycleIds || []), id] }).eq('id', user?.id).then(() => refreshData())} incentives={allIncentives} referralRate={referralCommissionRate} /></div>
                                                             : (
                                                                 <div className="relative p-6 pt-20 min-h-full">
                                                                     <div className="fixed top-24 right-8 z-30 pointer-events-none">
-                                                                        <button onClick={() => { setEditingAppt(null); setIsModalOpen(true); }} className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-lg transition-all active:scale-95 text-sm font-black uppercase tracking-widest shadow-indigo-100/50 dark:shadow-none"><IconPlus className="w-5 h-5" /> New Appointment</button>
+                                                                        <button onClick={() => { setEditingAppt(null); setIsModalOpen(true); }} className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white btn-premium shadow-lg transition-all active:scale-95 text-sm font-black uppercase tracking-widest shadow-indigo-100/50 dark:shadow-none"><IconPlus className="w-5 h-5" /> New Appointment</button>
                                                                     </div>
                                                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start pb-8">
                                                                         {isAdmin ?
@@ -666,18 +631,29 @@ export default function App() {
                                                                             // Agent view: Show all stages as before
                                                                             : [AppointmentStage.PENDING, AppointmentStage.RESCHEDULED, AppointmentStage.TRANSFERRED, AppointmentStage.ONBOARDED, AppointmentStage.ACTIVATED, ...((user?.showFailedSection ?? true) ? [AppointmentStage.NO_SHOW, AppointmentStage.DECLINED] : [])].map(stage => {
                                                                                 const searchLower = searchQuery.toLowerCase();
-                                                                                const items = allAppointments.filter(a => a.userId === user?.id).filter(a => {
+                                                                                const items = allAppointments.filter(a => a.userId === user?.id || a.activatedByUserId === user?.id).filter(a => {
                                                                                     if (stage === AppointmentStage.ONBOARDED) {
                                                                                         if (a.stage !== AppointmentStage.ONBOARDED && a.stage !== AppointmentStage.ACTIVATED) return false;
+                                                                                        // Only show if the current user owns it or activated it
+                                                                                        if (a.userId !== user?.id && a.activatedByUserId !== user?.id) return false;
+                                                                                    } else if (stage === AppointmentStage.ACTIVATED) {
+                                                                                       if (a.stage !== stage) return false;
+                                                                                       // Only show if the current user activated it
+                                                                                       if (a.activatedByUserId !== user?.id) return false;
                                                                                     } else {
                                                                                         if (a.stage !== stage) return false;
+                                                                                        // Revert to ownership for other stages
+                                                                                        if (a.userId !== user?.id) return false;
                                                                                     }
+                                                                                    
                                                                                     if (stage === AppointmentStage.ONBOARDED || stage === AppointmentStage.ACTIVATED) {
                                                                                         if (activeCycle && !searchQuery) {
                                                                                             const start = new Date(activeCycle.startDate).getTime();
                                                                                             const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
-                                                                                            const onboarded = new Date(a.onboardedAt || a.scheduledAt).getTime();
-                                                                                            if (onboarded < start || onboarded > end) return false;
+                                                                                            // For the "Activated Partners" column, filter by activatedAt
+                                                                                            const eventDate = (stage === AppointmentStage.ACTIVATED) ? (a.activatedAt || a.onboardedAt || a.scheduledAt) : (a.onboardedAt || a.scheduledAt);
+                                                                                            const eventTime = new Date(eventDate).getTime();
+                                                                                            if (eventTime < start || eventTime > end) return false;
                                                                                         }
                                                                                     }
                                                                                     if (searchQuery) {

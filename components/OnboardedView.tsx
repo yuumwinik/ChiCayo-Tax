@@ -166,6 +166,15 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
     const cycleOptions = useMemo(() => {
         if (payCycles.length === 0) return [];
         const now = new Date().getTime();
+        
+        // Find active cycle
+        const activeCycle = payCycles.find(c => {
+            const cycleStart = new Date(c.startDate).getTime();
+            const cycleEnd = new Date(c.endDate);
+            cycleEnd.setHours(23, 59, 59, 999);
+            return now >= cycleStart && now <= cycleEnd.getTime();
+        });
+
         const endedCycles = payCycles.filter(c => {
             const cycleEnd = new Date(c.endDate);
             cycleEnd.setHours(23, 59, 59, 999);
@@ -173,11 +182,19 @@ export const OnboardedView: React.FC<OnboardedViewProps> = ({
         });
         const sortedCycles = [...endedCycles].sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
         const relevant = sortedCycles.slice(0, 5);
-        const options = relevant.map(c => ({
+        
+        const options: Array<{value: string, label: string}> = [{ value: 'lifetime', label: 'Lifetime View' }];
+        
+        if (activeCycle) {
+            options.push({ value: activeCycle.id, label: `Active Cycle (${formatDate(activeCycle.startDate)} - ${formatDate(activeCycle.endDate)})` });
+        }
+
+        options.push(...relevant.map(c => ({
             value: c.id,
             label: `${formatDate(c.startDate)} - ${formatDate(c.endDate)}`
-        }));
-        return [{ value: 'lifetime', label: 'Lifetime View' }, ...options];
+        })));
+        
+        return options;
     }, [payCycles]);
 
     const renderTrophyCard = (appt: Appointment) => {

@@ -75,6 +75,7 @@ export interface Reminder {
   isPendingActivation?: boolean;
 }
 
+
 export interface Appointment {
   id: string;
   userId: string;

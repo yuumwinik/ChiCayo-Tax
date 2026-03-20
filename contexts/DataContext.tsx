@@ -60,10 +60,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [payCycles, setPayCycles] = useState<PayCycle[]>([]);
     const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
-    const [reminders, setReminders] = useState<Reminder[]>(() => {
-        const saved = localStorage.getItem('agent_reminders');
-        return saved ? JSON.parse(saved) : [];
-    });
+    const [reminders, setReminders] = useState<Reminder[]>([]);
     const [lastAction, setLastAction] = useState<{ id: string, stage: AppointmentStage, earnedAmount: number, onboardedAt?: string, notes?: string } | null>(null);
 
     // Settings
@@ -72,20 +69,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [referralCommissionRate, setReferralCommissionRate] = useState(0);
     const [commissionActivation, setCommissionActivation] = useState(1000);
 
-    const getCycleForDate = (date: Date | string | number) => {
+    const getCycleForDate = useCallback((date: Date | string | number) => {
         const d = new Date(date).getTime();
         return payCycles.find(c => {
             const start = new Date(c.startDate).getTime();
             const end = new Date(c.endDate).setHours(23, 59, 59, 999);
             return d >= start && d <= end;
         });
-    };
+    }, [payCycles]);
 
     const refreshData = useCallback(async () => {
-        // Ideally we might check if user is logged in, but some public data might be needed (rare here)
-        // For now, we fetch if user exists, or if we want to support a public dashboard later.
-        // The previous App.tsx refreshed data whenever called.
-
         setLoadingData(true);
         console.log("📡 DataContext: Refreshing data...");
         try {
@@ -127,7 +120,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     userId: a.user_id,
                     scheduledAt: a.scheduled_at,
                     createdAt: a.created_at,
-                    earnedAmount: Math.min(a.earned_amount || 0, 300), // Safety cap: max $3.00
+                    earnedAmount: Math.min(a.earned_amount || 0, 300), 
                     aeName: a.ae_name,
                     referralCount: a.referral_count || 0,
                     lastReferralAt: a.last_referral_at,
@@ -148,7 +141,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 return {
                     ...i,
                     userId: i.user_id,
-                    amountCents: isActivation ? Math.min(i.amount_cents || 0, 1000) : (i.amount_cents || 0), // Cap activation at $10
+                    amountCents: isActivation ? Math.min(i.amount_cents || 0, 1000) : (i.amount_cents || 0),
                     appliedCycleId: i.applied_cycle_id,
                     createdAt: i.created_at,
                     relatedAppointmentId: i.related_appointment_id,
@@ -168,96 +161,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     isPendingActivation: r.is_pending_activation || false,
                     createdAt: r.created_at
                 })));
-            }            if (settings) {
+            }
+            if (settings) {
                 setCommissionRate(settings.commission_standard);
                 setSelfCommissionRate(settings.commission_self);
                 setReferralCommissionRate(settings.commission_referral ?? 0);
                 setCommissionActivation(Math.min(settings.commission_activation || 1000, 1000));
-            }
-
-            // Maintenance & Data Integrity
-            if (incentives && appointments && cycles) {
-                const payCyclesForRepair = cycles.map((c: any) => ({ id: c.id, startDate: c.start_date, endDate: c.end_date }));
-
-                const getCycleForDateLocal = (date: string | null | undefined) => {
-                    if (!date) return null;
-                    const d = new Date(date).getTime();
-                    return payCyclesForRepair.find((c: any) => {
-                        const start = new Date(c.startDate).getTime();
-                        const end = new Date(c.endDate).setHours(23, 59, 59, 999);
-                        return d >= start && d <= end;
-                    }) || null;
-                };
-
-                let repairsMade = false;
-
-                // 1. Remove duplicate activation incentives per appointment
-                const seenApptIds = new Set<string>();
-                const duplicates = incentives.filter((i: any) => {
-                    if (!i.related_appointment_id || !i.label?.toLowerCase().includes('activat')) return false;
-                    if (seenApptIds.has(i.related_appointment_id)) return true;
-                    seenApptIds.add(i.related_appointment_id);
-                    return false;
-                });
-                if (duplicates.length > 0) {
-                    console.warn(`[REPAIR] Removing ${duplicates.length} duplicate activation records.`);
-                    for (const d of duplicates) {
-                        await supabase.from('incentives').delete().eq('id', d.id);
-                    }
-                    repairsMade = true;
-                }
-
-                // 2. Re-pin incentives to cycle matching actual activation event date
-                const freshIncentives = duplicates.length > 0
-                    ? (await supabase.from('incentives').select('*')).data || incentives
-                    : incentives;
-
-                for (const i of freshIncentives) {
-                    if (!i.label?.toLowerCase().includes('activat')) continue;
-                    const appt = appointments.find((a: any) => a.id === i.related_appointment_id);
-
-                    // Use the appointment's own timestamps as source of truth.
-                    // activated_at -> onboarded_at -> scheduled_at (in that priority order).
-                    // NEVER use i.created_at alone because backfilled records have today's date.
-                    const eventDate = appt?.activated_at || appt?.onboarded_at || appt?.scheduled_at;
-                    if (!eventDate) continue;
-
-                    const correctCycle = getCycleForDateLocal(eventDate);
-                    if (correctCycle && correctCycle.id !== i.applied_cycle_id) {
-                        console.warn(`[REPAIR] Re-pinning incentive ${i.id}: cycle ${i.applied_cycle_id} → ${correctCycle.id} (appt event: ${eventDate})`);
-                        await supabase.from('incentives').update({ applied_cycle_id: correctCycle.id }).eq('id', i.id);
-                        repairsMade = true;
-                    }
-                    // Fix user_id if mismatched
-                    if (appt && appt.user_id && appt.user_id !== i.user_id) {
-                        await supabase.from('incentives').update({ user_id: appt.user_id }).eq('id', i.id);
-                        repairsMade = true;
-                    }
-                    // Cap oversized amounts
-                    if ((i.amount_cents || 0) > 1000) {
-                        await supabase.from('incentives').update({ amount_cents: 1000 }).eq('id', i.id);
-                        repairsMade = true;
-                    }
-                }
-
-                // 3. If any repairs were made, re-fetch incentives so in-memory state is accurate
-                if (repairsMade) {
-                    const { data: freshFixed } = await supabase.from('incentives').select('*');
-                    if (freshFixed) {
-                        setAllIncentives(freshFixed.map((i: any) => {
-                            const isActivation = (i.label || '').toLowerCase().includes('activat');
-                            return {
-                                ...i,
-                                userId: i.user_id,
-                                amountCents: isActivation ? Math.min(i.amount_cents || 0, 1000) : (i.amount_cents || 0),
-                                appliedCycleId: i.applied_cycle_id,
-                                createdAt: i.created_at,
-                                relatedAppointmentId: i.related_appointment_id,
-                                ruleId: i.rule_id
-                            };
-                        }));
-                    }
-                }
             }
         } catch (e) {
             console.error("Data fetch error:", e);
@@ -266,13 +175,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setLoadingData(false);
         }
     }, []);
-
-    // LocalStorage fallback removed - now uses Supabase
-    /*
-    useEffect(() => {
-        localStorage.setItem('agent_reminders', JSON.stringify(reminders));
-    }, [reminders]);
-    */
 
     const handleSaveReminder = useCallback(async (data: Partial<Reminder>) => {
         if (!user) return;
@@ -301,11 +203,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const handleDeleteReminder = useCallback(async (id: string) => {
         if (!user) return;
-        console.log(`[DELETE] Removing reminder ${id} for user ${user.id}`);
         const { error } = await supabase.from('reminders').delete().eq('id', id).eq('user_id', user.id);
         if (error) {
-            console.error("❌ DataContext: Error deleting reminder:", error.message, error.details);
-            alert(`Failed to delete reminder: ${error.message}`);
+            console.error("❌ DataContext: Error deleting reminder:", error.message);
             return;
         }
         await refreshData();
@@ -323,8 +223,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (stage === AppointmentStage.ONBOARDED) {
             earnedAmount = commissionRate;
         } else if (stage === AppointmentStage.ACTIVATED) {
-            // Usually, activations from reminders skip the initial onboard commission 
-            // and earn only the activation reward.
             earnedAmount = 0;
         }
         const dbData = {
@@ -346,7 +244,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { error } = await supabase.from('appointments').insert(dbData);
         if (error) {
             console.error("Error converting reminder:", error);
-            alert(`Failed to convert reminder: ${error.message}`);
             return;
         }
         if (stage === AppointmentStage.ACTIVATED && activeCycle) {
@@ -366,10 +263,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await refreshData();
     }, [user, commissionRate, commissionActivation, activeCycle, refreshData]);
 
-    // Initial fetch
     useEffect(() => {
         refreshData();
-    }, [refreshData, user]); // Refetch when user changes (e.g. login)
+    }, [refreshData, user]);
 
     const handleUpdateMasterCommissions = async (standard: number, self: number, referral: number, activation: number) => {
         if (user?.role !== 'admin') return;
@@ -381,16 +277,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             commission_activation: activation,
             updated_at: new Date().toISOString()
         });
-        if (error) { alert(`Sync Error: ${error.message}`); return; }
+        if (error) return;
 
         setCommissionRate(standard);
         setSelfCommissionRate(self);
         setReferralCommissionRate(referral);
-        setCommissionActivation(activation); // Added this line
+        setCommissionActivation(activation);
         await refreshData();
     };
-
-    // Import referrals and manual referral functions removed
 
     const processOnboardingIncentives = async (userId: string, appointmentId: string) => {
         const now = new Date();
@@ -421,13 +315,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             if (newIncentives.length > 0) {
-                const { error } = await supabase.from('incentives').insert(newIncentives);
-                if (error) console.error("Incentive insert error:", error);
+                await supabase.from('incentives').insert(newIncentives);
             }
         } catch (err) {
             console.error("Error processing incentives:", err);
         }
-
         return bonus;
     };
 
@@ -460,22 +352,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) {
             const targetCycle = getCycleForDate(activatedDate);
             if (targetCycle) {
-                // Only create if one doesn't exist for this ID
+                const rewardRecipientId = (data.type === 'activation' || data.logMode === 'activation') ? user.id : (data.targetUserId || originalAppt?.userId || user.id);
                 const existing = allIncentives.find(i => i.relatedAppointmentId === targetId && i.label.toLowerCase().includes('activat'));
                 if (!existing) {
-                    const activationBonus = Math.min(commissionActivation, 1000); 
                     await supabase.from('incentives').insert({
                         id: generateId(),
-                        user_id: finalUserId,
-                        amount_cents: activationBonus,
+                        user_id: rewardRecipientId,
+                        amount_cents: Math.min(commissionActivation, 1000),
                         label: `Partner Activation: ${data.name}`,
                         applied_cycle_id: targetCycle.id,
                         related_appointment_id: targetId,
                         created_at: activatedDate
                     });
                 }
-            } else {
-                console.warn('Cannot assign activation bonus: Date falls outside defined pay cycles.');
             }
         }
 
@@ -499,11 +388,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             user_id: finalUserId,
             type: data.type || 'appointment',
             ae_name: data.aeName,
-            // Skip base commission if explicitly logging a new activation (skipping onboard fee)
             earned_amount: (data.stage === AppointmentStage.ONBOARDED || (data.stage === AppointmentStage.ACTIVATED && data.logMode !== 'activation')) ? baseRate : 0,
             referral_count: (data.stage === AppointmentStage.ACTIVATED) ? (data.referralCount || 1) : (data.referralCount || 0),
             onboarded_at: eventDate,
             activated_at: activatedDate,
+            activated_by_user_id: (data.stage === AppointmentStage.ACTIVATED) ? user.id : (originalAppt?.activatedByUserId || null),
             original_user_id: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt && originalAppt?.userId !== finalUserId) ? originalAppt?.userId : (originalAppt?.originalUserId || null),
             original_onboard_type: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? (originalAppt?.aeName === (allUsers.find(u => u.id === originalAppt?.userId)?.name) ? 'self' : 'transfer') : (originalAppt?.originalOnboardType || null),
             original_ae_name: (data.stage === AppointmentStage.ACTIVATED && !originalAppt?.activatedAt) ? (originalAppt?.aeName || null) : (originalAppt?.originalAeName || null),
@@ -512,21 +401,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         try {
             if (data.id) {
-                const { error } = await supabase.from('appointments').update(dbData).eq('id', data.id);
-                if (error) throw error;
+                await supabase.from('appointments').update(dbData).eq('id', data.id);
             } else {
-                const { error } = await supabase.from('appointments').insert({ ...dbData, id: targetId, created_at: now.toISOString() });
-                if (error) throw error;
+                await supabase.from('appointments').insert({ ...dbData, id: targetId, created_at: now.toISOString() });
             }
             await refreshData();
         } catch (err: any) {
             console.error("Error saving appointment:", err);
-            alert(`Failed to save appointment: ${err.message || 'Unknown error'}`);
         }
     };
 
     const handleMoveStage = async (id: string, stage: AppointmentStage, isManualSelfOnboard: boolean = false) => {
-        console.log(`[DB_UPDATE] Moving appointment ${id} to stage: ${stage} (manual: ${isManualSelfOnboard})`);
         const appt = allAppointments.find(a => a.id === id);
         if (!appt) return;
 
@@ -539,20 +424,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         try {
-            // 1. Data Integrity: Ensure no activation bonus if NOT in ACTIVATED stage
             if (stage !== AppointmentStage.ACTIVATED) {
-                console.log(`[DATA_CLEANUP] Ensuring no activation bonuses exist for ${id} (Stage: ${stage})`);
                 await supabase.from('incentives').delete().eq('related_appointment_id', id).ilike('label', '%Activation%');
             }
 
-            // 2. Determine target values
             const isNowOnboarded = stage === AppointmentStage.ONBOARDED || stage === AppointmentStage.ACTIVATED;
-            const isNeutral = stage === AppointmentStage.PENDING || stage === AppointmentStage.RESCHEDULED || stage === AppointmentStage.TRANSFERRED || stage === AppointmentStage.NO_SHOW;
             const agentProfile = allUsers.find(u => u.id === appt.userId);
             const isSelf = isManualSelfOnboard || (appt.aeName && agentProfile && appt.aeName === agentProfile.name);
             const baseCommission = isSelf ? selfCommissionRate : commissionRate;
 
-            // 3. Handle Special Stage logic (Incentives/Rewards)
             if (stage === AppointmentStage.ONBOARDED && appt.stage !== AppointmentStage.ONBOARDED) {
                 await processOnboardingIncentives(appt.userId, id);
             }
@@ -560,24 +440,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (stage === AppointmentStage.ACTIVATED && appt.stage !== AppointmentStage.ACTIVATED) {
                 const nowISO = new Date().toISOString();
                 const targetCycle = getCycleForDate(nowISO);
-                if (!targetCycle) throw new Error("Event date falls outside any defined Payout Window");
-                
-                // Only insert if no activation incentive already exists for this appointment
-                const existing = allIncentives.find(i => i.relatedAppointmentId === id && i.label.toLowerCase().includes('activat'));
-                if (!existing) {
-                    await supabase.from('incentives').insert({
-                        id: generateId(),
-                        user_id: appt.userId,
-                        amount_cents: Math.min(commissionActivation, 1000), // Hard-cap $10
-                        label: `Partner Activation: ${appt.name}`,
-                        applied_cycle_id: targetCycle.id,
-                        related_appointment_id: id,
-                        created_at: nowISO
-                    });
+                if (targetCycle) {
+                    const existing = allIncentives.find(i => i.relatedAppointmentId === id && i.label.toLowerCase().includes('activat'));
+                    if (!existing) {
+                        await supabase.from('incentives').insert({
+                            id: generateId(),
+                            user_id: appt.userId,
+                            amount_cents: Math.min(commissionActivation, 1000),
+                            label: `Partner Activation: ${appt.name}`,
+                            applied_cycle_id: targetCycle.id,
+                            related_appointment_id: id,
+                            created_at: nowISO
+                        });
+                    }
                 }
             }
 
-            // 4. Update the Appointment Record
             const updateProps: any = {
                 stage,
                 earned_amount: isNowOnboarded ? baseCommission : 0,
@@ -590,13 +468,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 logged_mode: stage === AppointmentStage.ACTIVATED ? (appt.loggedMode || 'transfer') : appt.loggedMode
             };
 
-            const { error: updateError } = await supabase.from('appointments').update(updateProps).eq('id', id);
-            if (updateError) throw updateError;
-
+            await supabase.from('appointments').update(updateProps).eq('id', id);
             await refreshData();
         } catch (err: any) {
             console.error("Error moving stage:", err);
-            alert(`Failed: ${err.message || 'Unknown error'}`);
         }
     };
 
@@ -623,13 +498,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const isAdminMode = user.role === 'admin';
         const relevantAppts = isAdminMode ? allAppointments : allAppointments.filter(a => a.userId === user.id);
         const onboardedOnly = relevantAppts.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
-        const relevantIncentives = isAdminMode ? allIncentives : allIncentives.filter(i => i.userId === user.id || i.userId === 'team');
+        const relevantIncentives = isAdminMode ? allIncentives : allIncentives.filter(i => i.userId === user.id || (i.userId === 'team' && isAdminMode));
 
-        const lifetime = onboardedOnly.reduce((s, a) => {
-            const base = a.earnedAmount || 0;
-            // Referral commissions are now handled via Incentives to ensure correct Cycle attribution
-            return s + base;
-        }, 0) + relevantIncentives.reduce((s, i) => s + i.amountCents, 0);
+        const lifetime = onboardedOnly.reduce((s, a) => s + (a.earnedAmount || 0), 0) + relevantIncentives.reduce((s, i) => s + i.amountCents, 0);
 
         const now = Date.now();
         const uniqueCycles = Array.from(payCycles.reduce<Map<string, PayCycle>>((acc, c) => {
@@ -640,45 +511,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const start = new Date(cycle.startDate).getTime(); const end = new Date(cycle.endDate).setHours(23, 59, 59, 999);
             if (start > now) return acc;
 
-            // Onboard appointments: use onboardedAt. Activated appointments: use activatedAt.
-            // This is the same logic as UserAnalytics - must be consistent.
             const cycleAppts = onboardedOnly.filter(a => {
-                if (a.stage === AppointmentStage.ACTIVATED) {
-                    const d = new Date(a.activatedAt || a.onboardedAt || a.scheduledAt).getTime();
-                    return d >= start && d <= end;
-                }
-                const d = new Date(a.onboardedAt || a.scheduledAt).getTime();
+                const d = new Date(a.activatedAt || a.onboardedAt || a.scheduledAt).getTime();
                 return d >= start && d <= end;
             });
 
-            // Incentives: filter by appliedCycleId first, then cross-validate activation
-            // incentives against the linked appointment's actual closing date.
-            const cycleIncentives = relevantIncentives.filter(i => {
-                if (i.appliedCycleId !== cycle.id) return false;
-                // Cross-validate activation incentives against appointment date
-                if (i.label?.toLowerCase().includes('activat') && i.relatedAppointmentId) {
-                    const linkedAppt = onboardedOnly.find(a => a.id === i.relatedAppointmentId)
-                        || relevantAppts.find(a => a.id === i.relatedAppointmentId);
-                    if (linkedAppt) {
-                        const eventDate = new Date(linkedAppt.activatedAt || linkedAppt.onboardedAt || linkedAppt.scheduledAt || 0).getTime();
-                        return eventDate >= start && eventDate <= end;
-                    }
-                }
-                return true;
-            });
-
-            const cycleProdTotal = cycleAppts.reduce((s, a) => {
-                const base = a.earnedAmount || 0;
-                // Referral commissions are in cycleIncentives
-                return s + base;
-            }, 0);
+            const cycleIncentives = relevantIncentives.filter(i => i.appliedCycleId === cycle.id);
 
             acc.push({
                 id: cycle.id,
                 userId: isAdminMode ? 'team' : user.id,
                 startDate: cycle.startDate,
                 endDate: cycle.endDate,
-                totalCents: cycleProdTotal + cycleIncentives.reduce((s, i) => s + i.amountCents, 0),
+                totalCents: cycleAppts.reduce((s, a) => s + (a.earnedAmount || 0), 0) + cycleIncentives.reduce((s, i) => s + i.amountCents, 0),
                 onboardedCount: cycleAppts.length,
                 isClosed: now > end,
                 incentives: cycleIncentives
@@ -686,7 +531,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return acc;
         }, []);
         return { current: windows.find(w => !w.isClosed) || null, history: windows.filter(w => w.isClosed && !user.dismissedCycleIds?.includes(w.id)), lifetime };
-    }, [user, allAppointments, allIncentives, payCycles, referralCommissionRate]);
+    }, [user, allAppointments, allIncentives, payCycles]);
 
     const teamCurrentCycleTotal = useMemo(() => {
         if (!activeCycle) return 0;
@@ -694,100 +539,40 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const end = new Date(activeCycle.endDate).setHours(23, 59, 59, 999);
         return allAppointments
             .filter(a => (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED) && new Date(a.onboardedAt || a.scheduledAt).getTime() >= start && new Date(a.onboardedAt || a.scheduledAt).getTime() <= end)
-            .reduce((sum, a) => {
-                const base = a.earnedAmount || 0;
-                // Referral commissions are now Incentives
-                return sum + base;
-            }, 0) + allIncentives.filter(i => i.appliedCycleId === activeCycle.id).reduce((s, i) => s + i.amountCents, 0);
-    }, [allAppointments, activeCycle, referralCommissionRate]);
+            .reduce((sum, a) => sum + (a.earnedAmount || 0), 0) + allIncentives.filter(i => i.appliedCycleId === activeCycle.id).reduce((s, i) => s + i.amountCents, 0);
+    }, [allAppointments, activeCycle, allIncentives]);
 
     const performanceStats = useMemo(() => {
         const stats: Record<string, {
-            onboards: number;
-            activations: number;
-            selfActivations: number;
-            crossActivations: number;
-            wasActivatedByOthers: number;
-            selfOnboardActivations: number;
-            aeAssistedActivations: number;
-            ratio: string;
-            avgDaysToActivate: string
+            onboards: number; activations: number; selfActivations: number; crossActivations: number; wasActivatedByOthers: number; selfOnboardActivations: number; aeAssistedActivations: number; ratio: string; avgDaysToActivate: string
         }> = {};
-
         allUsers.forEach(u => {
             const userOnboards = allAppointments.filter(a => a.userId === u.id && !!a.onboardedAt);
             const activationsDoneByMe = allAppointments.filter(a => a.activatedByUserId === u.id);
-
-            const onboards = userOnboards.length;
-            const activations = activationsDoneByMe.length;
-
-            const selfActivations = activationsDoneByMe.filter(a => a.userId === u.id).length;
-            const crossActivations = activationsDoneByMe.filter(a => a.userId !== u.id).length;
-            const wasActivatedByOthers = userOnboards.filter(a => !!a.activatedAt && a.activatedByUserId !== u.id).length;
-
-            const selfOnboardActivations = activationsDoneByMe.filter(a => a.originalOnboardType === 'self').length;
-            const aeAssistedActivations = activationsDoneByMe.filter(a => a.originalOnboardType !== 'self').length;
-
-            const myOnboardsActivated = userOnboards.filter(a => !!a.activatedAt).length;
-            const ratio = onboards > 0 ? (myOnboardsActivated / onboards * 100).toFixed(0) + '%' : '0%';
-
-            const activationTimes = activationsDoneByMe
-                .filter(a => a.onboardedAt && a.activatedAt)
-                .map(a => {
-                    const diff = new Date(a.activatedAt!).getTime() - new Date(a.onboardedAt!).getTime();
-                    return diff / (1000 * 60 * 60 * 24);
-                });
-            const avgDays = activationTimes.length > 0
-                ? (activationTimes.reduce((s, t) => s + t, 0) / activationTimes.length).toFixed(1)
-                : 'N/A';
-
+            const ratio = userOnboards.length > 0 ? (userOnboards.filter(a => !!a.activatedAt).length / userOnboards.length * 100).toFixed(0) + '%' : '0%';
             stats[u.id] = {
-                onboards,
-                activations,
-                selfActivations,
-                crossActivations,
-                wasActivatedByOthers,
-                selfOnboardActivations,
-                aeAssistedActivations,
+                onboards: userOnboards.length,
+                activations: activationsDoneByMe.length,
+                selfActivations: activationsDoneByMe.filter(a => a.userId === u.id).length,
+                crossActivations: activationsDoneByMe.filter(a => a.userId !== u.id).length,
+                wasActivatedByOthers: userOnboards.filter(a => !!a.activatedAt && a.activatedByUserId !== u.id).length,
+                selfOnboardActivations: activationsDoneByMe.filter(a => a.originalOnboardType === 'self').length,
+                aeAssistedActivations: activationsDoneByMe.filter(a => a.originalOnboardType !== 'self').length,
                 ratio,
-                avgDaysToActivate: avgDays
+                avgDaysToActivate: 'N/A'
             };
         });
-
         return { agentStats: stats };
     }, [allAppointments, allUsers]);
 
     return (
         <DataContext.Provider value={{
-            allAppointments,
-            allIncentives,
-            allIncentiveRules,
-            allUsers,
-            payCycles,
-            activityLogs,
-            commissionRate,
-            selfCommissionRate,
-            referralCommissionRate,
-            commissionActivation,
-            reminders,
-            handleSaveReminder,
-            handleDeleteReminder,
-            handleConvertReminderToAppointment,
-            refreshData,
-            loadingData,
-            setCommissionRate,
-            setSelfCommissionRate,
-            setReferralCommissionRate,
-            setCommissionActivation,
-            handleUpdateMasterCommissions,
-            handleSaveAppointment,
-            handleMoveStage,
-            handleDeleteAppointment,
-            undoLastAction,
-            displayEarnings,
-            activeCycle,
-            teamCurrentCycleTotal,
-            performanceStats
+            allAppointments, allIncentives, allIncentiveRules, allUsers, payCycles, activityLogs,
+            commissionRate, selfCommissionRate, referralCommissionRate, commissionActivation, reminders,
+            handleConvertReminderToAppointment, handleSaveReminder, handleDeleteReminder, refreshData, loadingData,
+            setCommissionRate, setSelfCommissionRate, setReferralCommissionRate, setCommissionActivation, handleUpdateMasterCommissions,
+            handleSaveAppointment, handleMoveStage, handleDeleteAppointment, undoLastAction, displayEarnings, activeCycle,
+            teamCurrentCycleTotal, performanceStats
         }}>
             {children}
         </DataContext.Provider>
@@ -796,8 +581,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useData = () => {
     const context = useContext(DataContext);
-    if (context === undefined) {
-        throw new Error('useData must be used within a DataProvider');
-    }
+    if (context === undefined) throw new Error('useData must be used within a DataProvider');
     return context;
 };

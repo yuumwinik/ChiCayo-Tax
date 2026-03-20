@@ -70,6 +70,20 @@ export function CardStack<T extends { id: string }>({ items, renderItem, thresho
     setCurrentIndex((prev) => (prev - 1 + items.length) % items.length);
   };
 
+  const stackRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isExpanded && stackRef.current && !stackRef.current.contains(event.target as Node)) {
+        setIsExpanded(false);
+        isHoverOpen.current = false;
+        setCurrentIndex(0);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isExpanded]);
+
   if (items.length <= threshold) {
     return <div className="flex flex-col gap-4">{items.map(renderItem)}</div>;
   }
@@ -78,7 +92,7 @@ export function CardStack<T extends { id: string }>({ items, renderItem, thresho
   const activeItem = items[safeIndex];
 
   return (
-    <div className="relative transition-all duration-300" onMouseLeave={handleMouseLeaveStack}>
+    <div ref={stackRef} className="relative transition-all duration-300" onMouseLeave={handleMouseLeaveStack}>
       {isExpanded ? (
         <div className="flex flex-col gap-4 animate-in fade-in duration-300 relative pt-10 pb-4 z-[100]">
           <button
@@ -90,6 +104,12 @@ export function CardStack<T extends { id: string }>({ items, renderItem, thresho
           <div className="space-y-4 relative z-[105]">
             {items.map(renderItem)}
           </div>
+          <button
+            onClick={handleManualCollapse}
+            className="w-full mt-2 py-3 flex items-center justify-center gap-2 text-xs font-bold text-indigo-600 bg-indigo-50/50 dark:bg-indigo-900/20 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+          >
+            <IconChevronUp className="w-3 h-3" /> Show Less
+          </button>
         </div>
       ) : (
         <div className="relative group min-h-[180px]">

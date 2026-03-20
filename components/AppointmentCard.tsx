@@ -85,7 +85,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
   return (
     <div
       onClick={() => onView ? onView(appointment) : onEdit(appointment)}
-      className={`bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border transition-all duration-200 group cursor-pointer relative ${
+      className={`bg-white dark:bg-slate-800 rounded-[2rem] p-5 shadow-sm border transition-all duration-500 group cursor-pointer relative animate-in zoom-in-95 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
         isActivated
           ? 'border-sky-300 dark:border-sky-700 ring-2 ring-sky-400/20'
           : isRecentReferral
@@ -143,16 +143,30 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
                 </div>
               </div>
             )}
-            <span className={`text-[9px] font-bold ${relative.isPast ? 'text-rose-500' : 'text-slate-400'} uppercase`}>{relative.label}</span>
+            <span className={`text-[9px] font-bold ${relative.isPast ? 'text-rose-500' : 'text-slate-400'} uppercase hidden`}>{relative.label}</span>
           </div>
         </div>
 
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-1">
-            <button onClick={(e) => { e.stopPropagation(); onDelete(appointment.id); }} className="text-slate-400 hover:text-rose-500 transition-colors p-2 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg z-10" title="Delete" type="button"><IconTrash className="w-4 h-4" /></button>
-            <button onClick={(e) => { e.stopPropagation(); onEdit(appointment); }} className="text-slate-400 hover:text-indigo-500 transition-colors p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg z-10" title="Edit" type="button"><IconEdit className="w-4 h-4" /></button>
+            <button onClick={(e) => { e.stopPropagation(); onDelete(appointment.id); }} className="text-slate-400 hover:text-rose-500 transition-colors p-2 hover:bg-rose-50 dark:hover:bg-rose-900/20 btn-premium z-10" title="Delete" type="button"><IconTrash className="w-4 h-4" /></button>
+            <button onClick={(e) => { e.stopPropagation(); onEdit(appointment); }} className="text-slate-400 hover:text-indigo-500 transition-colors p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 btn-premium z-10" title="Edit" type="button"><IconEdit className="w-4 h-4" /></button>
           </div>
-          <div className="text-[10px] text-slate-400 font-black uppercase tracking-tighter bg-slate-50 dark:bg-slate-900 px-2 py-1 rounded-full">{formatDate(appointment.scheduledAt)}</div>
+          <div className="flex flex-col items-end gap-1">
+            {(appointment.onboardedAt || appointment.stage === AppointmentStage.ONBOARDED || appointment.stage === AppointmentStage.ACTIVATED) && (
+              <div className="text-[8px] text-emerald-600 dark:text-emerald-400 font-black uppercase tracking-tighter bg-emerald-50 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full border border-emerald-100 dark:border-emerald-800/50">
+                {formatDate(appointment.onboardedAt || appointment.scheduledAt)}
+              </div>
+            )}
+            {appointment.activatedAt && (
+              <div className="text-[8px] text-sky-600 dark:text-sky-400 font-black uppercase tracking-tighter bg-sky-50 dark:bg-sky-900/40 px-2 py-0.5 rounded-full border border-sky-100 dark:border-sky-800/50">
+                {formatDate(appointment.activatedAt)}
+              </div>
+            )}
+            {!appointment.onboardedAt && !appointment.activatedAt && (
+              <div className="text-[10px] text-slate-400 font-black uppercase tracking-tighter bg-slate-50 dark:bg-slate-900 px-2 py-1 rounded-full">{formatDate(appointment.scheduledAt)}</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -235,13 +249,13 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.NO_SHOW); }}
               title="Failed to Show"
-              className="p-2 flex items-center justify-center rounded-lg text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50 relative z-40 w-10 h-10 flex-shrink-0"
+              className="p-2 flex items-center justify-center btn-premium text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50 relative z-40 w-10 h-10 flex-shrink-0"
             >
               <IconAlertCircle className="w-4 h-4" />
             </button>
             <button 
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED); }} 
-              className="flex-1 min-h-10 px-2 text-[10px] font-bold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors flex items-center justify-center gap-1 relative z-40 whitespace-nowrap"
+              className="flex-1 min-h-10 px-2 text-[10px] font-bold btn-premium text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors flex items-center justify-center gap-1 relative z-40 whitespace-nowrap"
             >
               <IconCheck className="w-3 h-3" />
               <span className="hidden xs:inline">Confirm</span>
@@ -254,7 +268,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.NO_SHOW); }}
               title="Failed to Show"
-              className="p-2 flex items-center justify-center rounded-lg text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50 relative z-40 w-10 h-10 flex-shrink-0"
+              className="p-2 flex items-center justify-center btn-premium text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 transition-all active:scale-90 border border-rose-100 dark:border-rose-900/50 relative z-40 w-10 h-10 flex-shrink-0"
             >
               <IconAlertCircle className="w-4 h-4" />
             </button>
@@ -263,7 +277,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(appointment, true); }}
               title="Reschedule"
-              className="p-2 flex items-center justify-center rounded-lg text-slate-600 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 transition-all active:scale-90 relative z-40 w-10 h-10 flex-shrink-0"
+              className="p-2 flex items-center justify-center btn-premium text-slate-600 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 transition-all active:scale-90 relative z-40 w-10 h-10 flex-shrink-0"
             >
               <IconClock className="w-4 h-4" />
             </button>
@@ -272,7 +286,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED, true); }}
               title="Direct Self-Onboard"
-              className="flex-1 min-h-10 px-2 min-w-max rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-sm relative z-40 flex items-center justify-center gap-1 whitespace-nowrap"
+              className="flex-1 min-h-10 px-2 min-w-max btn-premium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-sm relative z-40 flex items-center justify-center gap-1 whitespace-nowrap"
             >
               <IconCheck className="w-4 h-4" />
               <span className="hidden xs:inline sm:hidden">On</span>
@@ -283,41 +297,40 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
             <button
               onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ONBOARDED, false); }}
               title="Transfer to AE"
-              className="flex-1 min-h-10 px-2 min-w-max rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-indigo-200 dark:shadow-none relative z-40 flex items-center justify-center gap-1 whitespace-nowrap"
+              className="flex-1 min-h-10 px-2 min-w-max btn-premium text-white bg-indigo-600 hover:bg-indigo-700 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-indigo-200 dark:shadow-none relative z-40 flex items-center justify-center gap-1 whitespace-nowrap"
             >
               <IconTransfer className="w-4 h-4" />
               <span className="hidden xs:inline sm:hidden">X-fer</span>
               <span className="hidden sm:inline">Transfer</span>
             </button>
           </>
-        ) : appointment.stage === AppointmentStage.ONBOARDED ? (
-          /* ONBOARDED: Activation and Status */
-          <>
-            {!appointment.activatedAt && (
+        ) : (appointment.stage === AppointmentStage.ONBOARDED || appointment.stage === AppointmentStage.ACTIVATED) ? (
+          /* ONBOARDED/ACTIVATED: Activation and Status */
+          <div className="w-full flex justify-between items-center min-h-[44px]">
+            {appointment.stage === AppointmentStage.ONBOARDED && !appointment.activatedAt && (
               <button
                 onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ACTIVATED); }}
-                className="w-full min-h-10 py-1 flex items-center justify-center gap-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all active:scale-95 border border-emerald-200/50 dark:border-emerald-800/50"
+                className="group/act flex items-center justify-center gap-0 w-10 h-10 hover:w-28 hover:gap-2 rounded-full text-sky-700 bg-sky-50 hover:bg-sky-100 dark:bg-sky-900/40 dark:text-sky-300 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-95 border border-sky-200/50 dark:border-sky-800/50 overflow-hidden relative z-40 whitespace-nowrap"
               >
-                <IconRocket className="w-3 h-3" />
-                <span className="hidden xs:inline">Activate</span>
-                <span className="inline xs:hidden">Act</span>
+                <IconRocket className="w-4 h-4 shrink-0 transition-transform duration-500 group-hover/act:scale-110" />
+                <span className="opacity-0 w-0 group-hover/act:opacity-100 group-hover/act:w-auto transition-all duration-500 overflow-hidden">
+                  Activate
+                </span>
               </button>
             )}
-            <div className="flex justify-between items-center text-[9px] sm:text-[10px] text-slate-400 w-full">
-              <div className="flex items-center gap-1">
-                {appointment.activatedAt ? (
-                  <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400 font-bold uppercase">
+            <div className={`flex items-center gap-1 text-[9px] sm:text-[10px] text-slate-400 ${appointment.stage === AppointmentStage.ONBOARDED && !appointment.activatedAt ? 'ml-auto' : 'w-full justify-between'}`}>
+                {appointment.stage === AppointmentStage.ACTIVATED || appointment.activatedAt ? (
+                  <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400 font-bold uppercase transition-all animate-in slide-in-from-left-2 duration-500">
                     <IconCheck className="w-3 h-3" />
-                    <span className="hidden xs:inline">Activated</span>
+                    <span className="hidden xs:inline">Activated Partner</span>
                     <span className="inline xs:hidden">✓</span>
                   </span>
-                ) : (
-                  <span className="uppercase font-medium">Pending</span>
-                )}
-              </div>
-              <span className={`font-bold ${isActivated ? 'text-sky-500' : 'text-emerald-500'} whitespace-nowrap ml-1`}>+{formatCurrency(totalPayout)}</span>
+                ) : null}
+              <span className={`font-black ${isActivated ? 'text-sky-600' : 'text-emerald-500'} whitespace-nowrap px-2 py-1 rounded-lg bg-emerald-50/50 dark:bg-emerald-900/20 tabular-nums border border-emerald-100/30 dark:border-emerald-800/30`}>
+                +{formatCurrency(totalPayout)}
+              </span>
             </div>
-          </>
+          </div>
         ) : (
           /* OTHER STAGES: Show stage label */
           <div className="w-full flex justify-center items-center gap-2 text-[9px] sm:text-[10px] text-slate-400 py-1">

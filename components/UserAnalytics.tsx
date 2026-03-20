@@ -126,10 +126,29 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
          return true;
       });
 
-      const personalActivationIncentives = personalIncentives.filter(i => i.label.toLowerCase().includes('activat'));
-      const totalReferrals = personalActivationIncentives.length;
+      const personalOnboardedAppointments = personalFiltersApplied.filter(a => 
+         (a.userId === currentUser.id && a.stage === AppointmentStage.ONBOARDED) || 
+         (a.userId === currentUser.id && a.stage === AppointmentStage.ACTIVATED) ||
+         (a.activatedByUserId === currentUser.id && a.stage === AppointmentStage.ACTIVATED)
+      );
+      // But for the "Onboarded" count, we usually mean strictly onboards we own
+      const onboarded = personalFiltersApplied.filter(a => a.userId === currentUser.id && (a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED)).length;
+
+      // Base production revenue (Onboard fees)
+      const onboardingRevenue = personalOnboardedAppointments.reduce((sum, a) => sum + (a.earnedAmount || 0), 0);
+      
+      // Calculate average payout ONLY for those that actually earned a base commission
+      // This prevents 'direct activations' (0 base) from skewing the reported rate.
+      const paidOnboards = personalOnboardedAppointments.filter(a => (a.earnedAmount || 0) > 0);
+      const avgOnboard = paidOnboards.length > 0 ? (onboardingRevenue / paidOnboards.length) : 0; // Corrected: avgOnboard should be per onboard, not per 100
+
+      // Activation / Referral Bonus Revenue (from Incentives)
+      // These are incentives linked to an appointment activated in this cycle
+      const personalActivationIncentives = personalIncentives.filter(i => (i.label || '').toLowerCase().includes('activat'));
+      const activeReferralsCount = personalActivationIncentives.length;
       const activationIncentiveRevenue = personalActivationIncentives.reduce((sum, i) => sum + Number(i.amountCents), 0);
 
+      // Other bonus revenue (not activation/referral related)
       const personalBonusRevenue = personalIncentives.filter(i => {
          // Skip activation and ref incentives — they are counted separately
          if (i.label.toLowerCase().includes('activat')) return false;
@@ -137,16 +156,8 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
          return true;
       }).reduce((sum, i) => sum + Number(i.amountCents), 0);
 
-      const personalProdRevenue = personalOnboarded.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
-      const myTotalRevenue = personalProdRevenue + personalBonusRevenue + activationIncentiveRevenue;
-
-      // Calculate earnings breakdown
-      const onboardRevenue = personalProdRevenue;
-      const activationRevenue = activationIncentiveRevenue;
-      const totalRevenueForBreakdown = onboardRevenue + activationRevenue;
-      const onboardPercentage = totalRevenueForBreakdown > 0 ? Math.round((onboardRevenue / totalRevenueForBreakdown) * 100) : 0;
-      const activationPercentage = totalRevenueForBreakdown > 0 ? Math.round((activationRevenue / totalRevenueForBreakdown) * 100) : 0;
-      const activationCount = totalReferrals;
+      // Total Revenue for this scope
+      const totalRevenue = onboardingRevenue + activationIncentiveRevenue + personalBonusRevenue;
 
       // Team pool: strictly by appliedCycleId AND date cross-validation for activations
       const teamPoolIncentives = allIncentives.filter(i => {
@@ -170,24 +181,23 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
 
       return {
          total: personalFiltersApplied.length,
-         onboarded: personalOnboarded.length,
-         revenue: myTotalRevenue,
+         onboarded: onboarded,
+         revenue: totalRevenue, // This is the new totalRevenue
          bonusRevenue: personalBonusRevenue,
          referralRevenue: activationIncentiveRevenue,
-         referralCount: totalReferrals,
+         referralCount: activeReferralsCount,
          aeBreakdown,
          selfOnboards: personalOnboarded.filter(a => !a.aeName || a.aeName === currentUserName).length,
          scopeLabel: label,
          teamPoolTotal: teamTotalPool,
          scopeType,
          peakTime: personalOnboarded.length > 0 ? calculatePeakTime(personalOnboarded).label : 'N/A',
-         onboardRevenue,
-         activationRevenue,
-         onboardPercentage,
-         activationPercentage,
-         activationCount
+         onboardRevenue: onboardingRevenue,
+         activationRevenue: activationIncentiveRevenue,
+         avgOnboard,
+         totalRevenue // Exposing totalRevenue directly
       };
-   }, [appointments, allAppointments, allIncentives, selectedScopeId, activeCycle, payCycles, currentUserName, currentUser.id, referralRate]);
+   }, [appointments, allAppointments, allIncentives, selectedScopeId, activeCycle, payCycles, currentUserName, currentUser.id]);
 
    const currentRevenue: number = Number(scopedData.revenue) || 0;
    const poolTotal: number = Number(scopedData.teamPoolTotal) || 0;
@@ -218,7 +228,7 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
       }
 
       const performers = users.map(u => {
-         let userAppts = allAppointments.filter(a => a.userId === u.id);
+         let userAppts = allAppointments.filter(a => a.userId === u.id || a.activatedByUserId === u.id);
          let userIncentives = allIncentives.filter(i => i.userId === u.id);
 
          if (scopeType !== 'lifetime' && start !== null && end !== null) {
@@ -236,9 +246,9 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
 
          const onboards = userAppts.filter(a => a.stage === AppointmentStage.ONBOARDED || a.stage === AppointmentStage.ACTIVATED);
          const prodRev = onboards.reduce((sum, a) => sum + (Number(a.earnedAmount) || 0), 0);
-         const actRev = userIncentives.filter(i => i.label.toLowerCase().includes('activation')).reduce((sum, i) => sum + i.amountCents, 0);
+         const actRev = userIncentives.filter(i => i.label.toLowerCase().includes('activat')).reduce((sum, i) => sum + i.amountCents, 0);
          const bonusRev = userIncentives.filter(i => {
-            if (i.label.toLowerCase().includes('activation')) return false;
+            if (i.label.toLowerCase().includes('activat')) return false;
             if (i.relatedAppointmentId && i.label.toLowerCase().includes('ref')) return false;
             return true;
          }).reduce((sum, i) => sum + Number(i.amountCents), 0);
@@ -371,16 +381,16 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
          {/* EARNINGS BREAKDOWN WIDGET - Only show if there's data */}
          {scopedData.onboarded > 0 && (
             <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 p-8 rounded-[2.5rem] border border-emerald-200 dark:border-emerald-800 shadow-sm relative overflow-hidden group">
-               <div className="absolute top-0 right-0 p-6 text-emerald-100 dark:text-emerald-800/10"><IconTrendingUp className="w-16 h-16" /></div>
-               <div className="flex items-center justify-between mb-6">
-                  <div>
+               <div className="absolute top-0 right-0 p-6 text-emerald-100/50 dark:text-emerald-800/10 z-0"><IconTrendingUp className="w-16 h-16" /></div>
+               <div className="flex items-center justify-between mb-6 relative z-10">
+                  <div className="shrink-0">
                      <h3 className="text-xl font-black text-emerald-800 dark:text-emerald-200 flex items-center gap-3">
                         <IconDollarSign className="w-6 h-6 text-emerald-600" />
                         Earnings Breakdown
                      </h3>
                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">How your payout is composed</p>
                   </div>
-                  <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-4 py-2 rounded-xl font-black text-sm uppercase tracking-widest">
+                  <div className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest whitespace-nowrap shadow-sm border border-emerald-200/50 dark:border-emerald-700/30 relative z-20 mr-2">
                      {scopedData.scopeLabel}
                   </div>
                </div>
@@ -407,7 +417,7 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Activation Bonus</span>
                      </div>
                      <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mb-1">{formatCurrency(scopedData.activationRevenue)}</div>
-                     <div className="text-[10px] text-slate-500 font-medium">From {scopedData.activationCount} activation{scopedData.activationCount !== 1 ? 's' : ''}</div>
+                     <div className="text-[10px] text-slate-500 font-medium">From {scopedData.referralCount} activation{scopedData.referralCount !== 1 ? 's' : ''}</div>
                   </div>
 
                   {/* Visual Breakdown Chart */}
@@ -418,20 +428,19 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
                         </div>
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Composition</span>
                      </div>
-                     <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                           <span className="text-[10px] font-bold text-emerald-600">Onboard</span>
-                           <span className="text-[10px] font-black text-slate-900 dark:text-white">{scopedData.onboardPercentage}%</span>
-                        </div>
-                        <div className="h-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                           <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-1000" style={{ width: `${scopedData.onboardPercentage}%` }} />
-                        </div>
-                        <div className="flex justify-between items-center">
-                           <span className="text-[10px] font-bold text-indigo-600">Activation</span>
-                           <span className="text-[10px] font-black text-slate-900 dark:text-white">{scopedData.activationPercentage}%</span>
-                        </div>
-                        <div className="h-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                           <div className="h-full bg-gradient-to-r from-indigo-400 to-indigo-600 rounded-full transition-all duration-1000" style={{ width: `${scopedData.activationPercentage}%` }} />
+                     <div className="flex items-center gap-4 bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
+                        <div className="flex-1">
+                           <div className="flex justify-between mb-2">
+                              <span className="text-[10px] font-black text-emerald-600 uppercase">Onboard Base ({scopedData.onboarded})</span>
+                              <span className="text-[10px] font-black text-indigo-600 uppercase">Activation Boost ({scopedData.referralCount})</span>
+                           </div>
+                           <div className="h-4 bg-indigo-500 rounded-full flex overflow-hidden shadow-inner">
+                              <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${(scopedData.onboardRevenue / (scopedData.totalRevenue || 1)) * 100}%` }} />
+                           </div>
+                           <div className="flex justify-between mt-3">
+                              <span className="text-xl font-black text-slate-900 dark:text-white">{((scopedData.onboardRevenue / (scopedData.totalRevenue || 1)) * 100).toFixed(0)}%</span>
+                              <span className="text-xl font-black text-slate-900 dark:text-white">{((scopedData.referralRevenue / (scopedData.totalRevenue || 1)) * 100).toFixed(0)}%</span>
+                           </div>
                         </div>
                      </div>
                   </div>
@@ -441,8 +450,19 @@ export const UserAnalytics: React.FC<UserAnalyticsProps> = ({
 
          {scopedData.onboarded > 0 && (
             <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
-               <div className="absolute top-0 right-0 p-6 text-slate-50 dark:text-slate-800/20"><IconTrendingUp className="w-16 h-16" /></div>
-               <div className="flex items-center justify-between mb-4"><div><h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2"><IconBriefcase className="w-4 h-4 text-indigo-600" /> AE Closing Breakdown</h3><p className="text-[10px] text-slate-500 font-medium mt-0.5">Who is sealing the deal on your leads?</p></div><div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest leading-none">{scopedData.onboarded} Wins</div></div>
+               <div className="absolute top-0 right-0 p-6 text-slate-100 dark:text-slate-800/20 z-0"><IconTrendingUp className="w-16 h-16" /></div>
+               <div className="flex items-center justify-between mb-4 relative z-10">
+                  <div className="shrink-0">
+                     <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                        <IconBriefcase className="w-4 h-4 text-indigo-600" /> 
+                        AE Closing Breakdown
+                     </h3>
+                     <p className="text-[10px] text-slate-500 font-medium mt-0.5">Who is sealing the deal on your leads?</p>
+                  </div>
+                  <div className="bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest leading-none whitespace-nowrap border border-indigo-100 dark:border-indigo-800/30 relative z-20 mr-2">
+                     {scopedData.onboarded} Wins
+                  </div>
+               </div>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                   {Object.entries(scopedData.aeBreakdown).map(([name, countValue]) => {
                      const count = countValue as number;
