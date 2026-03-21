@@ -307,7 +307,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
         ) : (appointment.stage === AppointmentStage.ONBOARDED || appointment.stage === AppointmentStage.ACTIVATED) ? (
           /* ONBOARDED/ACTIVATED: Activation and Status */
           <div className="w-full flex justify-between items-center min-h-[44px]">
-            {appointment.stage === AppointmentStage.ONBOARDED && !appointment.activatedAt && (
+            {appointment.stage === AppointmentStage.ONBOARDED && (
               <button
                 onClick={(e) => { e.stopPropagation(); onMoveStage(appointment.id, AppointmentStage.ACTIVATED); }}
                 className="group/act flex items-center justify-center gap-0 w-10 h-10 hover:w-28 hover:gap-2 rounded-full text-sky-700 bg-sky-50 hover:bg-sky-100 dark:bg-sky-900/40 dark:text-sky-300 font-black text-[9px] sm:text-[10px] uppercase tracking-widest transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] active:scale-95 border border-sky-200/50 dark:border-sky-800/50 overflow-hidden relative z-40 whitespace-nowrap"
@@ -319,11 +319,10 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({ appointment, o
               </button>
             )}
             <div className={`flex items-center gap-1 text-[9px] sm:text-[10px] text-slate-400 ${appointment.stage === AppointmentStage.ONBOARDED && !appointment.activatedAt ? 'ml-auto' : 'w-full justify-between'}`}>
-                {appointment.stage === AppointmentStage.ACTIVATED || appointment.activatedAt ? (
+                {appointment.stage === AppointmentStage.ACTIVATED ? (
                   <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400 font-bold uppercase transition-all animate-in slide-in-from-left-2 duration-500">
                     <IconCheck className="w-3 h-3" />
                     <span className="hidden xs:inline">Activated Partner</span>
-                    <span className="inline xs:hidden">✓</span>
                   </span>
                 ) : null}
               <span className={`font-black ${isActivated ? 'text-sky-600' : 'text-emerald-500'} whitespace-nowrap px-2 py-1 rounded-lg bg-emerald-50/50 dark:bg-emerald-900/20 tabular-nums border border-emerald-100/30 dark:border-emerald-800/30`}>

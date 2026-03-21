@@ -46,6 +46,9 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
     const [tempActivation, setTempActivation] = useState((activationRate / 100).toString());
     const [syncRetroactive, setSyncRetroactive] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [editingCycleId, setEditingCycleId] = useState<string | null>(null);
+    const [editStartDate, setEditStartDate] = useState('');
+    const [editEndDate, setEditEndDate] = useState('');
 
     const [lookupQuery, setLookupQuery] = useState('');
     const [selectedAgentFilter, setSelectedAgentFilter] = useState('all');
@@ -294,7 +297,16 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
                             <IconClock className="w-6 h-6 text-indigo-600" />
                             <p className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 leading-relaxed">Appointments scheduled within this timeframe will automatically be grouped into this payout ledger.</p>
                         </div>
-                        <button onClick={() => { if (startDate && endDate) onAddCycle(startDate, endDate); setStartDate(''); setEndDate(''); }} className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-widest rounded-3xl shadow-xl transition-all active:scale-95 mt-auto">Establish Payout Window</button>
+                        <button onClick={() => { 
+                            if (startDate && endDate) {
+                                const startObj = new Date(startDate + 'T00:00:00');
+                                startObj.setHours(0, 0, 0, 0);
+                                const endObj = new Date(endDate + 'T23:59:59');
+                                endObj.setHours(23, 59, 59, 999);
+                                onAddCycle(startObj.toISOString(), endObj.toISOString());
+                            }
+                            setStartDate(''); setEndDate(''); 
+                        }} className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-widest rounded-3xl shadow-xl transition-all active:scale-95 mt-auto">Establish Payout Window</button>
                     </div>
                 </div>
 
@@ -317,11 +329,42 @@ export const AdminCycles: React.FC<AdminCyclesProps> = ({
                                         <div className="flex items-center gap-6">
                                             <div className={`p-3 rounded-2xl shadow-sm ${isActive ? 'bg-white/20' : 'bg-slate-50 dark:bg-slate-800 text-indigo-500'}`}><IconClock className="w-6 h-6" /></div>
                                             <div>
-                                                <p className={`text-sm font-black ${isActive ? 'text-white' : 'text-slate-900 dark:text-white'}`}>{formatDate(cycle.startDate)} - {formatDate(cycle.endDate)}</p>
-                                                <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}>{isActive ? 'LIVE ACTIVE SESSION' : 'UPCOMING WINDOW'}</span>
+                                                {editingCycleId === cycle.id ? (
+                                                    <div className="flex gap-2 items-center">
+                                                        <CustomDatePicker value={editStartDate} onChange={setEditStartDate} />
+                                                        <span className="text-slate-400 font-black">-</span>
+                                                        <CustomDatePicker value={editEndDate} onChange={setEditEndDate} />
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <p className={`text-sm font-black ${isActive ? 'text-white' : 'text-slate-900 dark:text-white'}`}>{formatDate(cycle.startDate)} - {formatDate(cycle.endDate)}</p>
+                                                        <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${isActive ? 'text-indigo-200' : 'text-slate-400'}`}>{isActive ? 'LIVE ACTIVE SESSION' : 'UPCOMING WINDOW'}</span>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
-                                        <button onClick={() => setDeleteId(cycle.id)} className={`p-3 rounded-xl transition-all ${isActive ? 'hover:bg-white/20 text-white/60 hover:text-white' : 'text-slate-300 hover:text-rose-500 hover:bg-rose-50'}`}><IconTrash className="w-5 h-5" /></button>
+                                        <div className="flex gap-2 items-center">
+                                            {editingCycleId === cycle.id ? (
+                                                <>
+                                                    <button onClick={() => {
+                                                        if (editStartDate && editEndDate) {
+                                                            const startObj = new Date(editStartDate + 'T00:00:00');
+                                                            startObj.setHours(0, 0, 0, 0);
+                                                            const endObj = new Date(editEndDate + 'T23:59:59');
+                                                            endObj.setHours(23, 59, 59, 999);
+                                                            onEditCycle(cycle.id, startObj.toISOString(), endObj.toISOString());
+                                                        }
+                                                        setEditingCycleId(null);
+                                                    }} className={`p-3 rounded-xl transition-all bg-emerald-500 text-white hover:bg-emerald-600`}><IconCheck className="w-5 h-5" /></button>
+                                                    <button onClick={() => setEditingCycleId(null)} className={`p-3 rounded-xl transition-all bg-slate-200 text-slate-500 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-300`}><IconX className="w-5 h-5" /></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => { setEditingCycleId(cycle.id); setEditStartDate(cycle.startDate.split('T')[0]); setEditEndDate(cycle.endDate.split('T')[0]); }} className={`p-3 rounded-xl transition-all ${isActive ? 'hover:bg-white/20 text-white/60 hover:text-white' : 'text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/40'}`}><IconEdit className="w-5 h-5" /></button>
+                                                    <button onClick={() => setDeleteId(cycle.id)} className={`p-3 rounded-xl transition-all ${isActive ? 'hover:bg-white/20 text-white/60 hover:text-white' : 'text-slate-300 hover:text-rose-500 hover:bg-rose-50'}`}><IconTrash className="w-5 h-5" /></button>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             })
